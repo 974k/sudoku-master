@@ -81,7 +81,8 @@ export const settingsScreen: ScreenFactory = (ctx) => {
     }
     next = run;
     btn.addEventListener('click', () => next?.());
-    return h('div', { class: 'set-row stack' }, h('div', { class: 'set-text' }, label, status), btn);
+    // full-width text (like the other stacked rows), button below
+    return h('div', { class: 'set-row stack' }, h('div', { class: 'set-text', css: { 'align-self': 'stretch' } }, label, status), btn);
   };
 
   const el = h(
