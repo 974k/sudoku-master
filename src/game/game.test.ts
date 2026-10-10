@@ -230,3 +230,40 @@ describe('hints', () => {
     expect(g.correct).toBe(0);
   });
 });
+
+describe('Sudoku AI puzzles in the game', () => {
+  it('play like any other puzzle: notes, mistakes, hints and victory', async () => {
+    const { generateForLevel } = await import('../engine/levelgen.ts');
+    const { createRng } = await import('../engine/rng.ts');
+    const { gridToString } = await import('../engine/board.ts');
+    const { aiPuzzleRef, refFromId } = await import('./catalog.ts');
+    const found = generateForLevel('expert', createRng('ai-game'));
+    const ref = refFromId(aiPuzzleRef('expert', gridToString(found.puzzle)).id)!;
+    expect(ref).not.toBeNull();
+    expect(ref.kind).toBe('ai');
+    const g = Game.create(loadPuzzle(ref), { mistakeLimit: 0 });
+    const c = g.values.findIndex((v) => v === 0);
+    g.toggleNote(c, 1);
+    expect(g.notes[c]).toBe(bit(1));
+    expect(g.setValue(c, wrongDigit(g, c)).kind).toBe('mistake');
+    expect(buildHint(g).kind).toBe('mistake');
+    g.erase(c);
+    let guard = 0;
+    while (g.status === 'playing' && guard++ < 200) {
+      const h = buildHint(g);
+      expect(h.kind).toBe('logic');
+      if (h.kind !== 'logic') break;
+      g.setValue(h.placement.cell, h.placement.digit, {}, true);
+    }
+    expect(g.status).toBe('won');
+  });
+
+  it('rejects ids that were tampered with', async () => {
+    const { refFromId } = await import('./catalog.ts');
+    const beginner = stagePuzzleRef('beginner', 1, 1).givens;
+    expect(refFromId(`ai-beginner-${beginner}`)?.kind).toBe('ai');
+    expect(refFromId(`ai-expert-${beginner}`)).toBeNull(); // claims the wrong difficulty
+    expect(refFromId(`ai-beginner-${'0'.repeat(81)}`)).toBeNull(); // not a proper puzzle
+    expect(refFromId(`ai-wizard-${beginner}`)).toBeNull();
+  });
+});

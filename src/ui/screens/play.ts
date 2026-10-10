@@ -4,7 +4,7 @@ import { applyStep, cloneState, createState, type LogicState, type Step } from '
 import { LEVEL_INFO, refFromId, type PuzzleRef } from '../../game/catalog.ts';
 import type { MoveResult } from '../../game/game.ts';
 import { buildHint, type Hint } from '../../game/hints.ts';
-import { currentStreak, isStageUnlocked, nextPuzzle } from '../../game/profile.ts';
+import { currentStreak, nextPuzzle } from '../../game/profile.ts';
 import type { WinReport } from '../../game/store.ts';
 import type { ScreenFactory } from '../app.ts';
 import { BoardView, type HintOverlay } from '../board.ts';
@@ -24,15 +24,17 @@ interface HintSession {
 }
 
 function backTarget(ref: PuzzleRef): string {
-  return ref.kind === 'daily' ? '/daily' : `/level/${ref.level}/${ref.stage}`;
+  if (ref.kind === 'daily') return '/daily';
+  if (ref.kind === 'ai') return '/ai';
+  return `/level/${ref.level}/${ref.stage}`;
 }
 
-export const playScreen: ScreenFactory = (ctx, [id]) => {
+export const playScreen: ScreenFactory = (ctx, [id], query) => {
   const ref = refFromId(id ?? '');
   if (!ref) throw new Error('unknown puzzle');
   const { store, feedback } = ctx;
-  if (ref.kind === 'stage' && !isStageUnlocked(store.profile, ref.level, ref.stage!, store.settings.unlockAll)) throw new Error('locked');
-  if (ref.kind === 'daily' && ref.date! > store.today()) throw new Error('future daily');
+  // locked puzzles (and future dailies) can't be opened, even by typing the address
+  if (!store.canPlay(ref)) throw new Error('locked');
 
   const game = store.openGame(ref);
   const S = () => store.settings;
@@ -53,7 +55,7 @@ export const playScreen: ScreenFactory = (ctx, [id]) => {
   const statusBar = h(
     'div',
     { class: 'statusbar' },
-    h('span', { class: `level-chip lvl-${ref.level}`, text: ref.kind === 'daily' ? `Daily · ${LEVEL_INFO[ref.level].name}` : LEVEL_INFO[ref.level].name }),
+    h('span', { class: `level-chip lvl-${ref.level}`, text: ref.kind === 'daily' ? `Daily · ${LEVEL_INFO[ref.level].name}` : ref.kind === 'ai' ? `AI · ${LEVEL_INFO[ref.level].name}` : LEVEL_INFO[ref.level].name }),
     mistakesEl,
     h('span', { class: 'timer-wrap' }, icon('clock'), timerEl),
   );
@@ -88,7 +90,7 @@ export const playScreen: ScreenFactory = (ctx, [id]) => {
       'header',
       { class: 'topbar play-top' },
       h('div', { class: 'topbar-side' }, iconButton('back', 'Back', () => leave())),
-      h('div', { class: 'topbar-title' }, h('h1', { text: ref.kind === 'daily' ? 'Daily Challenge' : `Stage ${ref.stage} · Puzzle ${ref.number}` }), h('p', { class: 'topbar-sub', text: ref.kind === 'daily' ? new Date(`${ref.date}T12:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }) : LEVEL_INFO[ref.level].name })),
+      h('div', { class: 'topbar-title' }, h('h1', { text: ref.kind === 'daily' ? 'Daily Challenge' : ref.kind === 'ai' ? 'Sudoku AI' : `Stage ${ref.stage} · Puzzle ${ref.number}` }), h('p', { class: 'topbar-sub', text: ref.kind === 'daily' ? new Date(`${ref.date}T12:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }) : LEVEL_INFO[ref.level].name })),
       h('div', { class: 'topbar-side end' }, pauseBtn, iconButton('more', 'Game menu', () => openMenu())),
     ),
     h('div', { class: 'play-body' }, h('div', { class: 'board-col' }, statusBar, h('div', { class: 'board-wrap' }, board.el), learnStrip), controls),
@@ -557,12 +559,14 @@ export const playScreen: ScreenFactory = (ctx, [id]) => {
       lines.length ? h('ul', { class: 'unlocks' }, lines) : null,
       ref!.kind === 'daily'
         ? h('button', { type: 'button', class: 'btn primary block', onClick: () => ctx.back('/daily') }, icon('calendar'), 'Back to calendar')
-        : next
+        : ref!.kind === 'ai'
+          ? h('button', { type: 'button', class: 'btn primary block', onClick: () => ctx.back('/ai') }, icon('brain'), 'New puzzle')
+          : next
           ? h('button', { type: 'button', class: 'btn primary block', onClick: () => ctx.navigate(`/play/${next.id}`, { replace: true }) }, icon('next'), next.level !== ref!.level ? `Next: ${LEVEL_INFO[next.level].name}` : 'Next puzzle')
           : null,
       h('div', { class: 'row-btns' },
         h('button', { type: 'button', class: 'btn ghost', onClick: () => ctx.navigate(`/play/${ref!.id}`, { replace: true }) }, icon('restart'), 'Replay'),
-        h('button', { type: 'button', class: 'btn ghost', onClick: () => ctx.back(ref!.kind === 'daily' ? '/' : backTarget(ref!)) }, icon('grid'), ref!.kind === 'daily' ? 'Home' : 'Stage'),
+        h('button', { type: 'button', class: 'btn ghost', onClick: () => ctx.back(ref!.kind === 'stage' ? backTarget(ref!) : '/') }, icon('grid'), ref!.kind === 'stage' ? 'Stage' : 'Home'),
       ),
     );
     setOverlay(h('div', { class: 'overlay', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Puzzle solved' }, card));
@@ -703,6 +707,8 @@ export const playScreen: ScreenFactory = (ctx, [id]) => {
 
   render();
   if (game.status === 'lost') showLost();
+  // a random Sudoku AI challenge reveals its difficulty as it begins
+  if (ref.kind === 'ai' && query.get('reveal') && !game.started) toast(`Random challenge: ${LEVEL_INFO[ref.level].name}`, { icon: 'bolt', ms: 4000 });
 
   return {
     el,

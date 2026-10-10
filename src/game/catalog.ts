@@ -1,6 +1,7 @@
 // Levels, stages and puzzle lookup (stage puzzles and daily challenges).
 
 import { gridToString, parseGrid } from '../engine/board.ts';
+import { validateForLevel } from '../engine/levelgen.ts';
 import { LEVELS, type LevelId } from '../engine/grade.ts';
 import { createRng } from '../engine/rng.ts';
 import { uniqueSolution } from '../engine/solver.ts';
@@ -11,8 +12,12 @@ export { LEVELS, type LevelId };
 
 export const STAGES_PER_LEVEL = 10;
 export const PUZZLES_PER_STAGE = 10;
-/** Puzzles to solve in a stage before the next stage unlocks. */
-export const STAGE_UNLOCK_REQUIREMENT = 7;
+/**
+ * Puzzles solved for a stage to count as "cleared" towards unlocking the next
+ * difficulty level. (Inside a level, puzzles open one at a time and the next
+ * stage opens when the previous stage is complete.)
+ */
+export const STAGE_CLEAR_REQUIREMENT = 7;
 /** Stages to clear in a level before the next level unlocks. */
 export const LEVEL_UNLOCK_STAGES = 2;
 
@@ -56,7 +61,8 @@ export const LEVEL_INFO: Record<LevelId, LevelInfo> = {
   },
 };
 
-export type PuzzleKind = 'stage' | 'daily';
+/** Stage puzzles, daily challenges, and puzzles generated on demand (Sudoku AI). */
+export type PuzzleKind = 'stage' | 'daily' | 'ai';
 
 export interface PuzzleRef {
   id: string;
@@ -88,6 +94,27 @@ export function stagePuzzleRef(level: LevelId, stage: number, number: number): P
   }
   const givens = STAGE_PUZZLES[level][(stage - 1) * PUZZLES_PER_STAGE + (number - 1)]!;
   return { id: stagePuzzleId(level, stage, number), kind: 'stage', level, stage, number, givens: normalise(givens) };
+}
+
+// ---------------------------------------------------------------------------
+// Sudoku AI: generated puzzles carry their grid in the id ("ai-<level>-<81 digits>")
+
+export function aiPuzzleRef(level: LevelId, givens: string): PuzzleRef {
+  return { id: `ai-${level}-${givens}`, kind: 'ai', level, givens };
+}
+
+const aiChecked = new Map<string, boolean>();
+
+/** Re-validates a generated puzzle from its id: it must still be a proper puzzle of the level it claims. */
+function aiRefFromId(level: string, givens: string): PuzzleRef | null {
+  if (!isLevel(level)) return null;
+  const key = `${level}-${givens}`;
+  let ok = aiChecked.get(key);
+  if (ok === undefined) {
+    ok = validateForLevel(parseGrid(givens), level) !== null;
+    aiChecked.set(key, ok);
+  }
+  return ok ? aiPuzzleRef(level, givens) : null;
 }
 
 function normalise(givens: string): string {
@@ -149,6 +176,8 @@ export function refFromId(id: string): PuzzleRef | null {
   try {
     const daily = /^daily-(\d{4}-\d{2}-\d{2})$/.exec(id);
     if (daily) return parseDateKey(daily[1]!) ? dailyPuzzleRef(daily[1]!) : null;
+    const ai = /^ai-([a-z]+)-([0-9]{81})$/.exec(id);
+    if (ai) return aiRefFromId(ai[1]!, ai[2]!);
     const m = /^([a-z]+)-(\d+)-(\d+)$/.exec(id);
     if (!m || !isLevel(m[1]!)) return null;
     return stagePuzzleRef(m[1]!, Number(m[2]), Number(m[3]));

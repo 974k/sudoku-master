@@ -2,7 +2,8 @@
 
 A complete, free Sudoku game for phones, tablets and desktops. It has no ads, accounts or tracking, and it works offline.
 
-- **500 puzzles**: 5 levels (Beginner → Expert) × 10 stages × 10 puzzles, graded by the logic each one needs, not just by clue count.
+- **500 puzzles**: 5 levels (Beginner → Expert) × 10 stages × 10 puzzles, graded by the logic each one needs, not just by clue count. Puzzles unlock one at a time, and completing a stage opens the next (Settings → *Unlock all levels* opens everything).
+- **Sudoku AI**: endless new puzzles generated on the device, at a chosen or a random difficulty. Each one is checked for a unique solution and graded by the same logical solver. No AI service or network is involved.
 - **Daily challenge** with a calendar, plus streaks, stars, and 29 achievements (including 5 level badges).
 - **Teaching hints** that point to the next logical step, explain it with highlighted cells and candidates, and only then offer to place the digit.
 - **Learning mode, an interactive tutorial, and a techniques guide** that shows a real example position for each of the 21 techniques.
@@ -79,26 +80,32 @@ npm run build        # web build + privacy audit + signed installer
 npm run smoke        # self-test: game loads, network sealed, saving works
 ```
 
+`SUDOKU_SMOKE_UPDATE=check|auto|ui|window npm run smoke` adds a test of the update check, the startup check, the update dialog (this one installs an available update), or F11 and transparency (see `src-tauri/src/smoke.js`).
+
 The installer is written to `desktop/src-tauri/target/release/bundle/nsis/`. It installs for the current user without admin rights. When uninstalling, players can choose whether to delete their saved data.
 
 How the Windows app keeps your data private:
 - **No network access from the game.** The page's Content Security Policy only allows Tauri's own in-app channel, so the game can't reach the internet. Navigation away from the game is refused.
 - **No service worker.** The app's files are already local.
-- **Nothing phoning home.** There's no telemetry, crash reporting or background update check.
+- **Nothing phoning home.** There's no telemetry or crash reporting. The only request the app makes is the update check below, which carries no game data and can be turned off.
 - **WebView2 caveat.** WebView2 is a Windows component, so Windows itself may send Microsoft diagnostic data about it according to the player's Windows settings. The app can't change that, and the Privacy page says so.
 
-Progress is saved in the app's own WebView2 storage (`%LOCALAPPDATA%app.sudokumaster.desktop`), separately from any browser copy of the game. The installer is unsigned, so Windows SmartScreen may show a warning the first time; choose *More info → Run anyway*.
+Progress is saved in the app's own WebView2 storage (`%LOCALAPPDATA%\app.sudokumaster.desktop`), separately from any browser copy of the game. The installer is unsigned, so Windows SmartScreen may show a warning the first time; choose *More info → Run anyway*.
 
 ### Updates
 
-The installed app has **Settings → Check for updates**. One click does the whole update:
-1. It reads `latest.json` from this repository's [latest release](https://github.com/974k/sudoku-master/releases/latest).
-2. It downloads the new installer and **verifies its signature** against the public key built into the app. Unsigned or tampered installers are rejected.
-3. It installs and restarts. Saved progress is kept.
+A few seconds after it starts, the app reads `latest.json` from this repository's [latest release](https://github.com/974k/sudoku-master/releases/latest) and compares version numbers. If a newer version exists, a small banner and a dot on the Home update button say so. Nothing else happens on its own:
+- The banner never appears during a game or lesson; it waits until the player leaves it.
+- Offline, or if GitHub doesn't answer, the check fails silently and the game works as usual.
+- Players can turn the check off (Settings → *Check for updates at startup*).
 
-It only runs on that click and never sends game data.
+The update dialog (the Home update button, or **Settings → Check for updates**) checks right away and shows the installed and available versions. Then:
+1. **Download** fetches the new installer with a progress bar and **verifies its signature** against the public key built into the app. Unsigned or tampered installers are rejected.
+2. **Install and restart** asks for confirmation, closes the app, installs, and reopens it. Progress and settings are kept.
 
-Updates are signed with a private key stored outside the repository, at `%USERPROFILE%.taurisudoku-master.key`. **Back this file up.** Without it, installed copies can't accept future updates, and players would have to reinstall manually.
+Every failure has a clear message, the current version keeps working, and a *Release page* button opens the GitHub release for a manual download.
+
+Updates are signed with a private key stored outside the repository, at `%USERPROFILE%\.tauri\sudoku-master.key`. **Back this file up.** Without it, installed copies can't accept future updates, and players would have to reinstall manually.
 
 To publish a new version:
 
@@ -109,6 +116,11 @@ npm run release      # builds, signs, and creates the GitHub Release (installer,
 ```
 
 `npm run release` needs the GitHub CLI signed in (`gh auth login`).
+
+### Full screen and transparency
+
+- **F11** switches full screen on and off; the previous window size, position and maximized state come back. In full screen, moving the pointer to the top edge shows an *Exit full screen* button.
+- **Settings → Window transparency** makes the whole native window see-through (opacity 40–100%, using the Windows layered-window API). It's always off when the app starts. *Restore full opacity* switches it back. It stays in effect through full screen, minimize and restore.
 
 ### Moving from 1.0.x (Electron)
 

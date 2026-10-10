@@ -8,6 +8,8 @@
 //     runs only when the player clicks Settings → Check for updates;
 //   * updates are signed: an installer only runs if its signature matches the
 //     public key built into this app.
+// Window extras: F11 full screen and optional window transparency (opacity),
+// which is off by default and never switched on at startup.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -15,13 +17,18 @@ use std::sync::Mutex;
 
 use serde_json::{Map, Value, json};
 use tauri::webview::PageLoadEvent;
-use tauri::{AppHandle, Manager, State, WebviewWindowBuilder};
+use tauri::{AppHandle, Manager, State, WebviewWindow, WebviewWindowBuilder, WindowEvent};
 use tauri_plugin_updater::{Update, UpdaterExt};
 
 const RELEASES_PAGE: &str = "https://github.com/974k/sudoku-master/releases/latest";
 /// Written once the progress saved by the 1.0.x (Electron) app has been offered
 /// to the page, so it is never imported twice (e.g. after "Delete all data").
 const LEGACY_MARKER: &str = "legacy-imported";
+
+/// Window opacity chosen by the player for this session (1.0 = opaque).
+struct WindowLook {
+    opacity: Mutex<f64>,
+}
 
 #[derive(Default)]
 struct Updates {
@@ -45,7 +52,7 @@ fn desktop_info(app: AppHandle) -> Value {
 #[tauri::command]
 async fn update_check(app: AppHandle, state: State<'_, Updates>) -> Result<Value, String> {
     let current = version(&app);
-    let found = app.updater().map_err(|e| e.to_string())?.check().await.map_err(|e| e.to_string())?;
+    let found = app.updater().map_err(update_error)?.check().await.map_err(update_error)?;
     Ok(match found {
         Some(update) => {
             let version = update.version.clone();
@@ -73,9 +80,10 @@ async fn update_download(state: State<'_, Updates>) -> Result<Value, String> {
             || {},
         )
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(update_error)?;
+    // download() has already checked the signature against our public key
     *state.bytes.lock().unwrap() = Some(bytes);
-    Ok(json!({ "status": "ready" }))
+    Ok(json!({ "status": "ready", "verified": true }))
 }
 
 #[tauri::command]
@@ -84,7 +92,19 @@ fn update_install(state: State<'_, Updates>) -> Result<(), String> {
     let bytes = state.bytes.lock().unwrap().take().ok_or("The update has not been downloaded")?;
     // Verifies the signature, then hands over to the installer, which closes
     // this app and starts the new version.
-    update.install(bytes).map_err(|e| e.to_string())
+    update.install(bytes).map_err(update_error)
+}
+
+/// A short reason the game turns into a clear message: "offline", "unavailable",
+/// "verify" (signature check failed) or "failed: <details>".
+fn update_error(e: tauri_plugin_updater::Error) -> String {
+    use tauri_plugin_updater::Error as E;
+    match e {
+        E::Reqwest(_) => "offline".into(),
+        E::Network(_) | E::ReleaseNotFound | E::Serialization(_) | E::TargetNotFound(_) | E::TargetsNotFound(_) => "unavailable".into(),
+        E::Minisign(_) | E::Base64(_) | E::SignatureUtf8(_) | E::SignedVersionMismatch { .. } | E::MissingSignedVersion => "verify".into(),
+        other => format!("failed: {other}"),
+    }
 }
 
 #[tauri::command]
@@ -95,6 +115,66 @@ fn update_progress(state: State<'_, Updates>) -> Option<u32> {
 #[tauri::command]
 fn open_releases_page() {
     let _ = std::process::Command::new("explorer").arg(RELEASES_PAGE).spawn();
+}
+
+// ---------------------------------------------------------------------------
+// full screen and transparency
+
+#[tauri::command]
+fn toggle_fullscreen(window: WebviewWindow) -> Result<bool, String> {
+    let next = !window.is_fullscreen().map_err(|e| e.to_string())?;
+    window.set_fullscreen(next).map_err(|e| e.to_string())?;
+    Ok(next)
+}
+
+#[tauri::command]
+fn is_fullscreen(window: WebviewWindow) -> bool {
+    window.is_fullscreen().unwrap_or(false)
+}
+
+/// Sets the opacity of the whole native window (0.4–1.0, so it stays readable). 1.0 restores the
+/// normal, fully opaque window.
+#[tauri::command]
+fn set_window_opacity(window: WebviewWindow, look: State<'_, WindowLook>, opacity: f64) -> Result<(), String> {
+    let opacity = if opacity.is_finite() { opacity.clamp(0.4, 1.0) } else { 1.0 };
+    *look.opacity.lock().unwrap() = opacity;
+    apply_opacity(&window, opacity)
+}
+
+/// Applies opacity with the Win32 layered-window API (the whole window, web
+/// content included, is blended with what is behind it).
+#[cfg(windows)]
+fn apply_opacity(window: &WebviewWindow, opacity: f64) -> Result<(), String> {
+    use windows_sys::Win32::Foundation::HWND;
+    use windows_sys::Win32::Graphics::Gdi::{RDW_ALLCHILDREN, RDW_ERASE, RDW_FRAME, RDW_INVALIDATE, RedrawWindow};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GWL_EXSTYLE, GetWindowLongPtrW, LWA_ALPHA, SetLayeredWindowAttributes, SetWindowLongPtrW, WS_EX_LAYERED,
+    };
+    let hwnd = window.hwnd().map_err(|e| e.to_string())?.0 as HWND;
+    let layered = WS_EX_LAYERED as isize;
+    unsafe {
+        let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        if opacity >= 0.999 {
+            if ex & layered != 0 {
+                SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex & !layered);
+                RedrawWindow(hwnd, std::ptr::null(), std::ptr::null_mut(), RDW_ERASE | RDW_INVALIDATE | RDW_FRAME | RDW_ALLCHILDREN);
+            }
+            return Ok(());
+        }
+        if ex & layered == 0 {
+            SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex | layered);
+        }
+        let alpha = (opacity * 255.0).round() as u8;
+        if SetLayeredWindowAttributes(hwnd, 0, alpha, LWA_ALPHA) == 0 {
+            return Err("This window can't be made transparent here.".into());
+        }
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn apply_opacity(_window: &WebviewWindow, _opacity: f64) -> Result<(), String> {
+    Err("Window transparency is only available on Windows.".into())
 }
 
 #[tauri::command]
@@ -201,6 +281,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(Updates::default())
+        .manage(WindowLook { opacity: Mutex::new(1.0) })
         .invoke_handler(tauri::generate_handler![
             desktop_info,
             update_check,
@@ -208,16 +289,21 @@ pub fn run() {
             update_install,
             update_progress,
             open_releases_page,
+            toggle_fullscreen,
+            is_fullscreen,
+            set_window_opacity,
             legacy_import_done,
             smoke_report
         ])
         .setup(move |app| {
             let legacy = legacy_storage(app.handle());
             let config = app.config().app.windows.first().cloned().ok_or("missing window config")?;
-            let smoke_js = include_str!("smoke.js").replace(
-                "__MODE__",
-                &serde_json::to_string(&std::env::var("SUDOKU_SMOKE_UPDATE").unwrap_or_default()).unwrap_or_default(),
-            );
+            let smoke_mode = std::env::var("SUDOKU_SMOKE_UPDATE").unwrap_or_default();
+            let smoke_js = include_str!("smoke.js")
+                .replace("__MODE__", &serde_json::to_string(&smoke_mode).unwrap_or_default())
+                .replace("__HOLD_MS__", &std::env::var("SUDOKU_SMOKE_HOLD_MS").unwrap_or_else(|_| "3000".into()));
+            // the window self-test needs a visible window; the others run hidden
+            let smoke_shown = smoke_mode == "window";
             WebviewWindowBuilder::from_config(app.handle(), &config)?
                 .initialization_script(init_script(legacy.as_ref()))
                 // only the game itself may be shown in the window
@@ -227,13 +313,28 @@ pub fn run() {
                         return;
                     }
                     if smoke {
-                        let _ = window.eval(&smoke_js); // the self-test runs without showing a window
+                        if smoke_shown {
+                            let _ = window.show();
+                        }
+                        let _ = window.eval(&smoke_js);
                     } else {
                         let _ = window.show();
                     }
                 })
                 .build()?;
             Ok(())
+        })
+        // Full screen, maximise and minimise make the window library rewrite the
+        // window's styles, dropping transparency: apply it again afterwards.
+        .on_window_event(|window, event| {
+            if matches!(event, WindowEvent::Resized(_) | WindowEvent::Focused(true)) {
+                let opacity = *window.state::<WindowLook>().opacity.lock().unwrap();
+                if opacity < 0.999 {
+                    if let Some(w) = window.app_handle().get_webview_window(window.label()) {
+                        let _ = apply_opacity(&w, opacity);
+                    }
+                }
+            }
         })
         .run(tauri::generate_context!())
         .expect("error while running Sudoku Master");

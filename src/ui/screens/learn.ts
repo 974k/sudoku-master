@@ -3,10 +3,11 @@ import { explainStep } from '../../engine/explain.ts';
 import { applyStep, cloneState, createState, findNextStep, type TechniqueId } from '../../engine/logic.ts';
 import { TECHNIQUE_EXAMPLES } from '../../data/puzzles.ts';
 import { LESSONS } from '../../game/tutorial.ts';
-import { LEVEL_UNLOCK_STAGES, STAGE_UNLOCK_REQUIREMENT } from '../../game/catalog.ts';
+import { LEVEL_UNLOCK_STAGES, STAGE_CLEAR_REQUIREMENT } from '../../game/catalog.ts';
 import type { ScreenFactory } from '../app.ts';
 import { BoardView } from '../board.ts';
 import { toggle, topBar } from '../components.ts';
+import { desktop } from '../desktop.ts';
 import { h } from '../dom.ts';
 import { icon } from '../icons.ts';
 import { GUIDE, GUIDE_BY_ID } from '../guide.ts';
@@ -95,7 +96,7 @@ export const rulesScreen: ScreenFactory = (ctx) => {
       ),
       h('p', { text: 'Replaying a puzzle keeps your best stars and best time.' }),
       h('h2', { text: 'Levels and stages' }),
-      h('p', { text: `There are five levels — Beginner, Easy, Medium, Hard and Expert — each with 10 stages of 10 puzzles. Solve ${STAGE_UNLOCK_REQUIREMENT} puzzles in a stage to unlock the next, and clear ${LEVEL_UNLOCK_STAGES} stages to unlock the next level. Puzzles get gradually harder within each level. Solve all 100 puzzles of a level to earn its badge.` }),
+      h('p', { text: `There are five levels — Beginner, Easy, Medium, Hard and Expert — each with 10 stages of 10 puzzles. Puzzles open one at a time: solve one to unlock the next. Complete a stage to unlock the next stage, and clear ${LEVEL_UNLOCK_STAGES} stages (${STAGE_CLEAR_REQUIREMENT} puzzles each) to unlock the next level. Puzzles get gradually harder within each level. Solve all 100 puzzles of a level to earn its badge.` }),
       h('h2', { text: 'Daily challenge and streaks' }),
       h('p', { text: 'A fresh puzzle arrives every day. Solve any puzzle on consecutive days to build your streak, and earn achievements as you go.' }),
     ),
@@ -114,6 +115,7 @@ export const controlsScreen: ScreenFactory = (ctx) => {
     ['Ctrl/⌘ + Z', 'Undo'],
     ['Ctrl/⌘ + Y or Shift + Ctrl/⌘ + Z', 'Redo'],
     ['P or Esc', 'Pause and resume'],
+    ...(desktop ? ([['F11', 'Full screen on and off']] as [string, string][]) : []),
   ];
   const el = h(
     'main',

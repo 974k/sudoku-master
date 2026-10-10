@@ -9,6 +9,8 @@ describe('route hierarchy', () => {
     expect(parentRoute('/level/beginner/3')).toBe('/level/beginner');
     expect(parentRoute('/play/medium-3-7')).toBe('/level/medium/3');
     expect(parentRoute('/play/daily-2026-10-09')).toBe('/daily');
+    expect(parentRoute('/play/ai-hard-' + '0'.repeat(81))).toBe('/ai');
+    expect(parentRoute('/ai')).toBe('/');
     expect(parentRoute('/daily?m=2026-09')).toBe('/');
     expect(parentRoute('/learn/technique/xWing')).toBe('/learn/techniques');
     expect(parentRoute('/learn/rules')).toBe('/learn');

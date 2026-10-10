@@ -3,7 +3,10 @@ import { AppStore } from './game/store.ts';
 import { App, type Route } from './ui/app.ts';
 import { toast } from './ui/components.ts';
 import { Feedback } from './ui/feedback.ts';
+import { startUpdateCheck } from './ui/update-ui.ts';
+import { setupWindowControls } from './ui/window-ui.ts';
 import { applyTheme } from './ui/theme.ts';
+import { aiScreen } from './ui/screens/ai.ts';
 import { dailyScreen } from './ui/screens/daily.ts';
 import { homeScreen } from './ui/screens/home.ts';
 import { controlsScreen, learnScreen, rulesScreen, techniqueScreen, techniquesScreen } from './ui/screens/learn.ts';
@@ -20,6 +23,7 @@ const routes: Route[] = [
   { pattern: /^\/level\/([a-z]+)\/(\d+)$/, screen: stageScreen },
   { pattern: /^\/play\/([a-z0-9-]+)$/, screen: playScreen },
   { pattern: /^\/daily$/, screen: dailyScreen },
+  { pattern: /^\/ai$/, screen: aiScreen },
   { pattern: /^\/stats$/, screen: statsScreen },
   { pattern: /^\/settings$/, screen: settingsScreen },
   { pattern: /^\/privacy$/, screen: privacyScreen },
@@ -38,6 +42,11 @@ store.subscribe(() => applyTheme(store.settings));
 
 const app = new App(document.getElementById('app')!, routes, store, new Feedback(() => store.settings));
 app.render();
+
+// Windows app only (no-ops on the web): F11 full screen, window transparency
+// controls, and a quiet check for a newer version shortly after start.
+setupWindowControls();
+startUpdateCheck(() => store.settings.autoUpdateCheck);
 
 // Errors stay on this device: they are shown to the player, never reported anywhere.
 let lastErrorToast = 0;

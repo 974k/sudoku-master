@@ -82,6 +82,8 @@ const ICONS = {
       ['path', 'M15 4a3 3 0 0 1 3 3 3 3 0 0 1 2 5 3 3 0 0 1-2 5 3 3 0 0 1-6 1'],
     ],
   },
+  download: { shapes: [['path', 'M12 4v11M7 10l5 5 5-5M5 20h14']] },
+  shrink: { shapes: [['path', 'M9 4v3a2 2 0 0 1-2 2H4M20 9h-3a2 2 0 0 1-2-2V4M4 15h3a2 2 0 0 1 2 2v3M15 20v-3a2 2 0 0 1 2-2h3']] },
   pencilNotes: { shapes: [['path', 'M4 20l4-1 11-11a2.1 2.1 0 0 0-3-3L5 16l-1 4z'], ['path', 'M3 4h.01M7 4h.01M3 8h.01']] },
 } satisfies Record<string, IconDef>;
 

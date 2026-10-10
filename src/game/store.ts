@@ -3,7 +3,7 @@
 import { evaluateAchievements, type Achievement } from './achievements.ts';
 import { dateKey, loadPuzzle, refFromId, type PuzzleRef } from './catalog.ts';
 import { Game, type GameSnapshot } from './game.ts';
-import { createProfile, recordStart, recordWin, sanitizeProfile, type Profile, type WinOutcome } from './profile.ts';
+import { createProfile, isPuzzleUnlocked, recordStart, recordWin, sanitizeProfile, type Profile, type WinOutcome } from './profile.ts';
 import { sanitizeSettings, type Settings } from './settings.ts';
 import { Storage } from './storage.ts';
 
@@ -80,8 +80,16 @@ export class AppStore {
   // -------------------------------------------------------------------------
   // games
 
-  /** Resume a saved game for this puzzle, or start a fresh one. */
+  /** Whether the player may open this puzzle (locked stage puzzles and future dailies can't be). */
+  canPlay(ref: PuzzleRef): boolean {
+    if (ref.kind === 'stage') return isPuzzleUnlocked(this.profile, ref.level, ref.stage!, ref.number!, this.settings.unlockAll);
+    if (ref.kind === 'daily') return ref.date! <= this.today();
+    return true;
+  }
+
+  /** Resume a saved game for this puzzle, or start a fresh one. Throws for a locked puzzle. */
   openGame(ref: PuzzleRef): Game {
+    if (!this.canPlay(ref)) throw new Error('This puzzle is locked');
     const puzzle = loadPuzzle(ref);
     const snap = this.games[ref.id];
     if (snap) {

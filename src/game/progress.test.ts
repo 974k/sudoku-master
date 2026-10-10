@@ -8,6 +8,7 @@ import {
   createProfile,
   currentStreak,
   isLevelUnlocked,
+  isPuzzleUnlocked,
   isStageUnlocked,
   levelProgress,
   nextPuzzle,
@@ -66,19 +67,57 @@ describe('unlocking', () => {
     expect(isStageUnlocked(p, 'beginner', 2)).toBe(false);
   });
 
-  it('opens the next stage after 7 of 10 puzzles', () => {
+  it('opens puzzles one at a time', () => {
     const p = createProfile();
-    for (let n = 1; n <= 6; n++) expect(win(p, 'beginner', 1, n).unlockedStage).toBeNull();
+    expect(isPuzzleUnlocked(p, 'beginner', 1, 1)).toBe(true);
+    expect(isPuzzleUnlocked(p, 'beginner', 1, 2)).toBe(false);
+    expect(isPuzzleUnlocked(p, 'beginner', 1, 9)).toBe(false);
+    win(p, 'beginner', 1, 1);
+    expect(isPuzzleUnlocked(p, 'beginner', 1, 2)).toBe(true);
+    expect(isPuzzleUnlocked(p, 'beginner', 1, 3)).toBe(false);
+    for (let n = 2; n <= 8; n++) win(p, 'beginner', 1, n);
+    expect(isPuzzleUnlocked(p, 'beginner', 1, 9)).toBe(true);
+    expect(isPuzzleUnlocked(p, 'beginner', 1, 10)).toBe(false);
+    // solved puzzles stay open for replay
+    for (let n = 1; n <= 8; n++) expect(isPuzzleUnlocked(p, 'beginner', 1, n)).toBe(true);
+    // nothing in a locked stage opens
+    expect(isPuzzleUnlocked(p, 'beginner', 2, 1)).toBe(false);
+    // the same rule applies in every level
+    expect(isPuzzleUnlocked(p, 'easy', 1, 1)).toBe(false);
+  });
+
+  it('opens the next stage only when the previous stage is complete', () => {
+    const p = createProfile();
+    for (let n = 1; n <= 9; n++) expect(win(p, 'beginner', 1, n).unlockedStage).toBeNull();
     expect(isStageUnlocked(p, 'beginner', 2)).toBe(false);
-    expect(win(p, 'beginner', 1, 7).unlockedStage).toBe(2);
-    expect(stageProgress(p, 'beginner', 1)).toMatchObject({ solved: 7, stars: 21, cleared: true, complete: false });
-    for (let n = 8; n <= 9; n++) win(p, 'beginner', 1, n);
-    expect(win(p, 'beginner', 1, 10).stageCompleted).toBe(true);
+    expect(stageProgress(p, 'beginner', 1)).toMatchObject({ solved: 9, stars: 27, cleared: true, complete: false });
+    const last = win(p, 'beginner', 1, 10);
+    expect(last.stageCompleted).toBe(true);
+    expect(last.unlockedStage).toBe(2);
+    expect(isPuzzleUnlocked(p, 'beginner', 2, 1)).toBe(true);
+    expect(isPuzzleUnlocked(p, 'beginner', 2, 2)).toBe(false);
+    expect(isStageUnlocked(p, 'beginner', 3)).toBe(false);
+  });
+
+  it('keeps progress made under the earlier rules open', () => {
+    // e.g. 7 puzzles of stage 1 and some of stage 2, played out of order before this update
+    const p = createProfile();
+    for (const n of [1, 2, 3, 5, 6, 7, 8]) win(p, 'beginner', 1, n);
+    for (const n of [1, 3]) win(p, 'beginner', 2, n);
+    expect(isStageUnlocked(p, 'beginner', 2)).toBe(true); // already played in
+    for (const n of [1, 2, 3, 5, 6, 7, 8]) expect(isPuzzleUnlocked(p, 'beginner', 1, n)).toBe(true);
+    expect(isPuzzleUnlocked(p, 'beginner', 1, 4)).toBe(true); // the gap: its predecessor is solved
+    expect(isPuzzleUnlocked(p, 'beginner', 1, 9)).toBe(true);
+    expect(isPuzzleUnlocked(p, 'beginner', 1, 10)).toBe(false);
+    expect(isPuzzleUnlocked(p, 'beginner', 2, 3)).toBe(true);
+    expect(isPuzzleUnlocked(p, 'beginner', 2, 4)).toBe(true);
+    expect(isPuzzleUnlocked(p, 'beginner', 2, 5)).toBe(false);
+    expect(isStageUnlocked(p, 'beginner', 3)).toBe(false);
   });
 
   it('opens the next level after clearing 2 stages', () => {
     const p = createProfile();
-    for (let n = 1; n <= 7; n++) win(p, 'beginner', 1, n);
+    for (let n = 1; n <= 10; n++) win(p, 'beginner', 1, n);
     for (let n = 1; n <= 6; n++) win(p, 'beginner', 2, n);
     expect(isLevelUnlocked(p, 'easy')).toBe(false);
     expect(win(p, 'beginner', 2, 7).unlockedLevel).toBe('easy');
@@ -86,9 +125,14 @@ describe('unlocking', () => {
     expect(isLevelUnlocked(p, 'medium')).toBe(false);
   });
 
-  it('unlock-all opens everything', () => {
+  it('unlock-all opens everything, and turning it off restores the rules', () => {
     const p = createProfile();
-    for (const l of LEVELS) expect(isStageUnlocked(p, l, 10, true)).toBe(true);
+    for (const l of LEVELS) {
+      expect(isStageUnlocked(p, l, 10, true)).toBe(true);
+      expect(isPuzzleUnlocked(p, l, 10, 10, true)).toBe(true);
+    }
+    expect(isPuzzleUnlocked(p, 'expert', 10, 10, false)).toBe(false);
+    expect(isPuzzleUnlocked(p, 'beginner', 1, 2, false)).toBe(false);
   });
 
   it('completes a level and earns its badge', () => {
@@ -110,6 +154,21 @@ describe('unlocking', () => {
     expect(nextPuzzle(p, stagePuzzleRef('beginner', 1, 1))?.id).toBe('beginner-1-2');
     for (let n = 2; n <= 10; n++) win(p, 'beginner', 1, n);
     expect(nextPuzzle(p, stagePuzzleRef('beginner', 1, 10))?.id).toBe('beginner-2-1');
+  });
+});
+
+describe('Sudoku AI wins', () => {
+  it('count towards level stats and streaks but not stage records', async () => {
+    const { aiPuzzleRef } = await import('./catalog.ts');
+    const p = createProfile();
+    const ref = aiPuzzleRef('hard', stagePuzzleRef('hard', 1, 1).givens);
+    const out = recordWin(p, { ref, elapsedMs: 400_000, mistakes: 0, hints: 0, usedNotes: false, today: '2026-10-09' });
+    expect(out.stars).toBe(3);
+    expect(Object.keys(p.records)).toHaveLength(0);
+    expect(p.levels.hard).toMatchObject({ won: 1, bestMs: 400_000, perfect: 1 });
+    expect(p.streak.current).toBe(1);
+    expect(isPuzzleUnlocked(p, 'beginner', 1, 2)).toBe(false); // no effect on stage progress
+    expect(evaluateAchievements(p).map((a) => a.id)).toContain('first-puzzle');
   });
 });
 
@@ -158,6 +217,12 @@ describe('sanitizing stored data', () => {
     expect(s.mistakeLimit).toBe(0);
     expect(s.sound).toBe(true);
     expect(s.hints).toBe(false);
+    expect(s.autoUpdateCheck).toBe(true);
+    expect(sanitizeSettings({ autoUpdateCheck: false }).autoUpdateCheck).toBe(false);
+    expect(s.windowOpacity).toBe(0.85);
+    expect(sanitizeSettings({ windowOpacity: 0.05 }).windowOpacity).toBe(0.4); // never close to invisible
+    expect(sanitizeSettings({ windowOpacity: 7 }).windowOpacity).toBe(1);
+    expect(sanitizeSettings({ windowOpacity: Number.NaN }).windowOpacity).toBe(0.85);
   });
 
   it('repairs a corrupted profile', () => {
@@ -207,7 +272,7 @@ describe('store persistence', () => {
   it('does not save a puzzle that was only opened', () => {
     const backend = memoryBackend();
     const a = new AppStore(new Storage(backend), () => day);
-    a.saveGame(a.openGame(stagePuzzleRef('easy', 1, 1)));
+    a.saveGame(a.openGame(stagePuzzleRef('beginner', 1, 1)));
     expect(new AppStore(new Storage(backend)).continueTarget()).toBeNull();
   });
 
@@ -253,14 +318,28 @@ describe('store persistence', () => {
     expect(a.settings.theme).toBe('sepia');
   });
 
+  it('refuses to open a locked puzzle, even when asked directly', () => {
+    const a = new AppStore(new Storage(memoryBackend()), () => day);
+    expect(a.canPlay(stagePuzzleRef('beginner', 1, 1))).toBe(true);
+    expect(a.canPlay(stagePuzzleRef('beginner', 1, 2))).toBe(false);
+    expect(() => a.openGame(stagePuzzleRef('beginner', 1, 9))).toThrow(/locked/);
+    expect(() => a.openGame(stagePuzzleRef('expert', 5, 1))).toThrow(/locked/);
+    expect(a.canPlay(dailyPuzzleRef('2026-10-09'))).toBe(true);
+    expect(a.canPlay(dailyPuzzleRef('2026-10-10'))).toBe(false); // the future
+    a.updateSettings({ unlockAll: true });
+    expect(() => a.openGame(stagePuzzleRef('expert', 5, 1))).not.toThrow();
+    a.updateSettings({ unlockAll: false });
+    expect(a.canPlay(stagePuzzleRef('expert', 5, 1))).toBe(false);
+  });
+
   it('drops games that no longer match a puzzle', () => {
     const backend = memoryBackend();
     const a = new AppStore(new Storage(backend), () => day);
-    const g = a.openGame(stagePuzzleRef('beginner', 1, 3));
+    const g = a.openGame(stagePuzzleRef('beginner', 1, 1));
     g.toggleNote(g.values.findIndex((v) => v === 0), 1);
     a.saveGame(g);
     const raw = JSON.parse(backend.getItem('sudoku-master:games')!);
-    raw.games['beginner-1-3'].givens = '1'.repeat(81);
+    raw.games['beginner-1-1'].givens = '1'.repeat(81);
     backend.setItem('sudoku-master:games', JSON.stringify(raw));
     expect(new AppStore(new Storage(backend)).continueTarget()).toBeNull();
   });
@@ -268,13 +347,13 @@ describe('store persistence', () => {
   it('a lost game can be resumed', () => {
     const a = new AppStore(new Storage(memoryBackend()), () => day);
     a.updateSettings({ mistakeLimit: 3 });
-    const g = Game.create(loadPuzzle(stagePuzzleRef('beginner', 1, 4)), { mistakeLimit: 3 });
+    const g = Game.create(loadPuzzle(stagePuzzleRef('beginner', 1, 1)), { mistakeLimit: 3 });
     const c = g.values.findIndex((v) => v === 0);
     const wrongs = [1, 2, 3, 4, 5, 6, 7, 8, 9].filter((d) => d !== g.solution[c]);
     for (const w of wrongs.slice(0, 3)) g.setValue(c, w);
     expect(g.status).toBe('lost');
     a.saveGame(g);
-    expect(a.openGame(stagePuzzleRef('beginner', 1, 4)).status).toBe('lost');
+    expect(a.openGame(stagePuzzleRef('beginner', 1, 1)).status).toBe('lost');
   });
 });
 

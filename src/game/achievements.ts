@@ -1,7 +1,7 @@
 // Achievements and level badges — earned purely through play.
 
 import { LEVEL_INFO, LEVELS, type LevelId, type PuzzleRef } from './catalog.ts';
-import { dailySolved, levelProgress, stagePuzzlesSolved, stageProgress, totalStars, type Profile } from './profile.ts';
+import { dailySolved, gamesWon, levelProgress, stagePuzzlesSolved, stageProgress, totalStars, type Profile } from './profile.ts';
 
 export interface WinContext {
   ref: PuzzleRef;
@@ -44,7 +44,7 @@ function anyStage(p: Profile, pred: (solved: number, stars: number) => boolean):
 }
 
 export const ACHIEVEMENTS: readonly Achievement[] = [
-  count('first-puzzle', 'First Puzzle', 'Solve your first puzzle.', 'trophy', 1, (p) => Object.keys(p.records).length),
+  count('first-puzzle', 'First Puzzle', 'Solve your first puzzle.', 'trophy', 1, (p) => Math.max(Object.keys(p.records).length, gamesWon(p))),
   {
     id: 'perfect-game',
     title: 'Perfect Game',

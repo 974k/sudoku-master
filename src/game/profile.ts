@@ -4,7 +4,7 @@ import {
   LEVEL_UNLOCK_STAGES,
   LEVELS,
   PUZZLES_PER_STAGE,
-  STAGE_UNLOCK_REQUIREMENT,
+  STAGE_CLEAR_REQUIREMENT,
   STAGES_PER_LEVEL,
   addDays,
   stagePuzzleId,
@@ -155,19 +155,23 @@ export function recordWin(p: Profile, w: WinInput, unlockAll = false): WinOutcom
   const { ref } = w;
   const perfect = w.mistakes === 0 && w.hints === 0;
   const stars = starsFor(w.mistakes, w.hints);
-  const prev = p.records[ref.id];
+  // Generated (Sudoku AI) puzzles count towards stats but keep no per-puzzle
+  // record: records drive stage progress, and there are endless generated puzzles.
+  const prev = ref.kind === 'ai' ? undefined : p.records[ref.id];
 
   const before = ref.kind === 'stage' ? snapshotUnlocks(p, unlockAll) : null;
   const stageBefore = ref.kind === 'stage' ? stageProgress(p, ref.level, ref.stage!, unlockAll) : null;
   const levelBefore = ref.kind === 'stage' ? levelProgress(p, ref.level, unlockAll) : null;
 
-  p.records[ref.id] = {
-    stars: (prev ? Math.max(prev.stars, stars) : stars) as Stars,
-    bestMs: prev && prev.bestMs > 0 ? Math.min(prev.bestMs, w.elapsedMs) : w.elapsedMs,
-    solves: (prev?.solves ?? 0) + 1,
-    perfect: (prev?.perfect ?? false) || perfect,
-    first: prev?.first || w.today,
-  };
+  if (ref.kind !== 'ai') {
+    p.records[ref.id] = {
+      stars: (prev ? Math.max(prev.stars, stars) : stars) as Stars,
+      bestMs: prev && prev.bestMs > 0 ? Math.min(prev.bestMs, w.elapsedMs) : w.elapsedMs,
+      solves: (prev?.solves ?? 0) + 1,
+      perfect: (prev?.perfect ?? false) || perfect,
+      first: prev?.first || w.today,
+    };
+  }
 
   const ls = ref.kind === 'daily' ? p.daily : p.levels[ref.level];
   const lvl = p.levels[ref.level];
@@ -241,7 +245,7 @@ export interface StageProgress {
   solved: number;
   stars: number;
   unlocked: boolean;
-  /** Enough puzzles solved to unlock the next stage. */
+  /** Enough puzzles solved to count towards unlocking the next difficulty level. */
   cleared: boolean;
   /** All puzzles solved. */
   complete: boolean;
@@ -263,7 +267,7 @@ export function stageProgress(p: Profile, level: LevelId, stage: number, unlockA
     solved,
     stars,
     unlocked: isStageUnlocked(p, level, stage, unlockAll),
-    cleared: solved >= STAGE_UNLOCK_REQUIREMENT,
+    cleared: solved >= STAGE_CLEAR_REQUIREMENT,
     complete: solved === PUZZLES_PER_STAGE,
   };
 }
@@ -280,15 +284,31 @@ export function isLevelUnlocked(p: Profile, level: LevelId, unlockAll = false): 
   const prev = LEVELS[i - 1]!;
   if (!isLevelUnlocked(p, prev, false)) return false;
   let cleared = 0;
-  for (let s = 1; s <= STAGES_PER_LEVEL; s++) if (stageSolved(p, prev, s) >= STAGE_UNLOCK_REQUIREMENT) cleared++;
+  for (let s = 1; s <= STAGES_PER_LEVEL; s++) if (stageSolved(p, prev, s) >= STAGE_CLEAR_REQUIREMENT) cleared++;
   return cleared >= LEVEL_UNLOCK_STAGES;
 }
 
+/**
+ * Strict progression: a stage opens once the previous stage is complete.
+ * A stage the player has already solved puzzles in stays open (progress made
+ * under earlier rules is never locked away).
+ */
 export function isStageUnlocked(p: Profile, level: LevelId, stage: number, unlockAll = false): boolean {
   if (unlockAll) return true;
   if (!isLevelUnlocked(p, level)) return false;
   if (stage <= 1) return true;
-  return stageSolved(p, level, stage - 1) >= STAGE_UNLOCK_REQUIREMENT;
+  return stageSolved(p, level, stage - 1) === PUZZLES_PER_STAGE || stageSolved(p, level, stage) > 0;
+}
+
+/**
+ * Inside an open stage, puzzles open one at a time: the first, then each one
+ * after the previous puzzle is solved. Solved puzzles always stay open.
+ */
+export function isPuzzleUnlocked(p: Profile, level: LevelId, stage: number, number: number, unlockAll = false): boolean {
+  if (unlockAll) return true;
+  if (!isStageUnlocked(p, level, stage)) return false;
+  if (number <= 1) return true;
+  return Boolean(p.records[stagePuzzleId(level, stage, number - 1)] || p.records[stagePuzzleId(level, stage, number)]);
 }
 
 export interface LevelProgress {

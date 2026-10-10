@@ -3,12 +3,14 @@ import { currentStreak, totalStars, stagePuzzlesSolved } from '../../game/profil
 import type { ScreenFactory } from '../app.ts';
 import { formatTime, h } from '../dom.ts';
 import { icon } from '../icons.ts';
+import { updateButton } from '../update-ui.ts';
 
 export function puzzleTitle(ref: PuzzleRef): string {
   if (ref.kind === 'daily') {
     const d = new Date(`${ref.date}T12:00`);
     return `Daily · ${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
   }
+  if (ref.kind === 'ai') return `Sudoku AI · ${LEVEL_INFO[ref.level].name}`;
   return `${LEVEL_INFO[ref.level].name} · Stage ${ref.stage} · #${ref.number}`;
 }
 
@@ -29,6 +31,7 @@ export const homeScreen: ScreenFactory = (ctx) => {
   const el = h(
     'main',
     { class: 'screen home' },
+    updateButton(),
     h(
       'div',
       { class: 'hero' },
@@ -79,6 +82,13 @@ export const homeScreen: ScreenFactory = (ctx) => {
           }),
         ),
         dailyRec ? h('span', { class: 'done-badge', 'aria-label': 'Completed' }, icon('check')) : icon('next', 'icon chevron'),
+      ),
+      h(
+        'button',
+        { type: 'button', class: 'card-btn', onClick: () => ctx.navigate('/ai') },
+        h('span', { class: 'card-icon accent' }, icon('brain')),
+        h('span', { class: 'card-text' }, h('strong', { text: 'Sudoku AI' }), h('small', { text: 'New puzzles generated on your device' })),
+        icon('next', 'icon chevron'),
       ),
       h(
         'div',

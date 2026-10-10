@@ -18,4 +18,5 @@ if (!env.TAURI_SIGNING_PRIVATE_KEY) {
 }
 env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD ??= '';
 const cli = fileURLToPath(new URL('./node_modules/@tauri-apps/cli/tauri.js', import.meta.url));
-execFileSync(process.execPath, [cli, 'build'], { stdio: 'inherit', env });
+// extra arguments go to `tauri build` (e.g. --config overrides for a test build)
+execFileSync(process.execPath, [cli, 'build', ...process.argv.slice(2)], { stdio: 'inherit', env });

@@ -61,6 +61,7 @@ export function parentRoute(route: string): string | null {
   if ((m = /^\/level\/([a-z]+)\/\d+$/.exec(p))) return `/level/${m[1]}`;
   if (/^\/level\/[a-z]+$/.test(p)) return '/levels';
   if (p.startsWith('/play/daily-')) return '/daily';
+  if (p.startsWith('/play/ai-')) return '/ai';
   if ((m = /^\/play\/([a-z]+)-(\d+)-\d+$/.exec(p))) return `/level/${m[1]}/${m[2]}`;
   if (p.startsWith('/learn/technique/')) return '/learn/techniques';
   if (p.startsWith('/learn/')) return '/learn';

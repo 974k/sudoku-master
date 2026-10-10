@@ -26,6 +26,9 @@
     downloadUpdate: () => invoke('update_download'),
     installUpdate: () => invoke('update_install'),
     openReleasesPage: () => invoke('open_releases_page'),
+    toggleFullscreen: () => invoke('toggle_fullscreen'),
+    isFullscreen: () => invoke('is_fullscreen'),
+    setWindowOpacity: (opacity) => invoke('set_window_opacity', { opacity }),
     onProgress: (callback) => {
       let stopped = false;
       (async () => {

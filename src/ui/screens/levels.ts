@@ -6,15 +6,14 @@ import {
   LEVEL_UNLOCK_STAGES,
   LEVELS,
   PUZZLES_PER_STAGE,
-  STAGE_UNLOCK_REQUIREMENT,
   STAGES_PER_LEVEL,
   isLevel,
   stagePuzzleRef,
   type LevelId,
 } from '../../game/catalog.ts';
-import { levelProgress, stageProgress } from '../../game/profile.ts';
+import { isPuzzleUnlocked, levelProgress, stageProgress } from '../../game/profile.ts';
 import type { ScreenFactory } from '../app.ts';
-import { progressBar, progressRing, stars, topBar } from '../components.ts';
+import { progressBar, progressRing, stars, toast, topBar } from '../components.ts';
 import { formatTime, h } from '../dom.ts';
 import { icon } from '../icons.ts';
 
@@ -33,7 +32,7 @@ export const levelsScreen: ScreenFactory = (ctx) => {
           type: 'button',
           class: `level-card lvl-${level}${lp.unlocked ? '' : ' locked'}`,
           'aria-disabled': lp.unlocked ? undefined : 'true',
-          onClick: () => lp.unlocked && ctx.navigate(`/level/${level}`),
+          onClick: () => (lp.unlocked ? ctx.navigate(`/level/${level}`) : toast(`Clear ${LEVEL_UNLOCK_STAGES} stages of ${prev} first.`, { icon: 'lock' })),
         },
         h(
           'div',
@@ -91,7 +90,7 @@ export const stagesScreen: ScreenFactory = (ctx, [levelParam]) => {
           class: `stage-card${sp.unlocked ? '' : ' locked'}${sp.complete ? ' complete' : ''}`,
           'aria-label': `Stage ${s}: ${status}${sp.unlocked ? `, ${sp.stars} of 30 stars` : ''}`,
           'aria-disabled': sp.unlocked ? undefined : 'true',
-          onClick: () => sp.unlocked && ctx.navigate(`/level/${level}/${s}`),
+          onClick: () => (sp.unlocked ? ctx.navigate(`/level/${level}/${s}`) : toast(`Complete stage ${s - 1} first.`, { icon: 'lock' })),
         },
         sp.unlocked
           ? progressRing(sp.solved / PUZZLES_PER_STAGE, sp.complete ? icon('check') : h('span', { class: 'ring-num', text: String(s) }), 54)
@@ -99,7 +98,7 @@ export const stagesScreen: ScreenFactory = (ctx, [levelParam]) => {
         h('strong', { text: `Stage ${s}` }),
         sp.unlocked
           ? h('span', { class: 'stage-stars' }, icon('star', 'icon star on'), `${sp.stars}/30`)
-          : h('small', { text: `Solve ${STAGE_UNLOCK_REQUIREMENT} in stage ${s - 1}` }),
+          : h('small', { text: `Complete stage ${s - 1}` }),
         h('small', { class: 'stage-status', text: sp.unlocked ? `${sp.solved}/10` : '' }),
       ),
     );
@@ -126,7 +125,7 @@ export const stagesScreen: ScreenFactory = (ctx, [levelParam]) => {
         lp.complete ? h('p', { class: `badge-line${lp.gold ? ' gold' : ''}` }, icon('medal'), `${info.name} Badge earned${lp.gold ? ' — gold, every puzzle perfect!' : ''}`) : null,
       ),
       grid,
-      h('p', { class: 'hint-text', text: `Solve ${STAGE_UNLOCK_REQUIREMENT} of the 10 puzzles in a stage to unlock the next one.` }),
+      h('p', { class: 'hint-text', text: 'Puzzles open one at a time. Complete a stage to unlock the next one.' }),
     ),
   );
   return { el, title: info.name };
@@ -171,6 +170,24 @@ export const stageScreen: ScreenFactory = (ctx, [levelParam, stageParam]) => {
     const ref = stagePuzzleRef(level, stage, n);
     const rec = store.profile.records[ref.id];
     const inProgress = store.hasSavedGame(ref.id);
+    const open = isPuzzleUnlocked(store.profile, level, stage, n, store.settings.unlockAll);
+    if (!open) {
+      tiles.appendChild(
+        h(
+          'button',
+          {
+            type: 'button',
+            class: 'puzzle-tile locked',
+            'aria-label': `Puzzle ${n}, locked: solve puzzle ${n - 1} first`,
+            'aria-disabled': 'true',
+            onClick: () => toast(`Solve puzzle ${n - 1} first.`, { icon: 'lock' }),
+          },
+          h('span', { class: 'tile-num', text: String(n) }),
+          icon('lock', 'icon tile-lock'),
+        ),
+      );
+      continue;
+    }
     tiles.appendChild(
       h(
         'button',
@@ -205,7 +222,11 @@ export const stageScreen: ScreenFactory = (ctx, [levelParam, stageParam]) => {
           h('p', { class: 'stage-stars big' }, icon('star', 'icon star on'), `${sp.stars} / 30 stars`),
           h('p', {
             class: 'muted',
-            text: sp.complete ? 'Stage complete!' : sp.cleared ? 'Next stage unlocked.' : `Solve ${STAGE_UNLOCK_REQUIREMENT - sp.solved} more to unlock stage ${stage + 1}.`,
+            text: sp.complete
+              ? 'Stage complete!'
+              : stage < STAGES_PER_LEVEL
+                ? `Solve ${PUZZLES_PER_STAGE - sp.solved} more to unlock stage ${stage + 1}.`
+                : `${PUZZLES_PER_STAGE - sp.solved} puzzles left in the last stage.`,
           }),
         ),
       ),

@@ -1,9 +1,12 @@
-import type { Settings } from '../../game/settings.ts';
+import { MIN_WINDOW_OPACITY, type Settings } from '../../game/settings.ts';
 import type { ScreenFactory } from '../app.ts';
 import { confirmDialog, segmented, toast, toggle, topBar } from '../components.ts';
 import { desktop } from '../desktop.ts';
 import { h, type Child } from '../dom.ts';
 import { icon } from '../icons.ts';
+import { openUpdateDialog, updates } from '../update-ui.ts';
+import type { UpdateState } from '../updates.ts';
+import { windowLook } from '../window-ui.ts';
 
 export const settingsScreen: ScreenFactory = (ctx) => {
   const { store } = ctx;
@@ -37,52 +40,86 @@ export const settingsScreen: ScreenFactory = (ctx) => {
     );
   } else offline.textContent = 'Offline mode unavailable in this browser.';
 
-  // Windows app only: one click checks GitHub, downloads, installs and restarts.
-  let stopProgress: (() => void) | null = null;
-  const updateRow = (): HTMLElement | null => {
-    if (!desktop) return null;
-    const bridge = desktop;
-    const status = h('small', { text: 'Contacts GitHub only when you click. No game data is sent.' });
+  // Windows app only: updates come from GitHub, only with the player's go-ahead.
+  let stopUpdates: (() => void) | null = null;
+  const updateRows = (): HTMLElement[] => {
+    const u = updates;
+    if (!u) return [];
     const label = h('span', { class: 'set-label', text: 'App updates' });
-    const btn = h('button', { type: 'button', class: 'btn primary small', text: 'Check for updates' });
-    void bridge.info().then((i) => i && (label.textContent = `App updates · version ${i.version}`));
-    let next: (() => void) | null = null;
-    const idle = (text: string, button: string, action: () => void = run) => {
-      status.textContent = text;
-      btn.textContent = button;
-      btn.disabled = false;
-      next = action;
-    };
-    async function run(): Promise<void> {
-      btn.disabled = true;
-      btn.textContent = 'Checking…';
-      status.textContent = 'Looking for a newer version…';
-      try {
-        const res = await bridge.checkForUpdate();
-        if (res.status === 'unsupported') return idle('Updates work in the installed app.', 'Check for updates');
-        if (res.status === 'latest') return idle(`You have the latest version (${res.current}).`, 'Check again');
-        if (res.portable) {
-          return idle(`Version ${res.version} is available. This portable copy can't update itself; download the new version from GitHub.`, 'Open download page', () => void bridge.openReleasesPage());
-        }
-        btn.textContent = 'Updating…';
-        status.textContent = `Downloading version ${res.version}…`;
-        stopProgress = bridge.onProgress((pct) => (status.textContent = `Downloading version ${res.version}… ${pct}%`));
-        await bridge.downloadUpdate();
-        stopProgress();
-        stopProgress = null;
-        status.textContent = `Installing version ${res.version}. Sudoku Master will restart — your progress is saved.`;
-        await new Promise((r) => setTimeout(r, 1500));
-        await bridge.installUpdate();
-      } catch {
-        stopProgress?.();
-        stopProgress = null;
-        idle("Couldn't reach GitHub. Check your internet connection and try again.", 'Try again');
+    const status = h('small');
+    void desktop?.info().then((i) => i && (label.textContent = `App updates · version ${i.version}`), () => undefined);
+    const describe = (st: UpdateState): string => {
+      switch (st.phase) {
+        case 'checking':
+          return 'Checking for a newer version…';
+        case 'latest':
+          return `You have the latest version (${st.current}).`;
+        case 'available':
+        case 'manual':
+          return `Version ${st.version} is available.`;
+        case 'downloading':
+          return `Downloading version ${st.version}… ${st.percent}%`;
+        case 'ready':
+          return `Version ${st.version} is downloaded and ready to install.`;
+        case 'installing':
+          return `Installing version ${st.version}…`;
+        default:
+          return 'Updates come from GitHub and are signature-checked. No game data is sent.';
       }
-    }
-    next = run;
-    btn.addEventListener('click', () => next?.());
-    // full-width text (like the other stacked rows), button below
-    return h('div', { class: 'set-row stack' }, h('div', { class: 'set-text', css: { 'align-self': 'stretch' } }, label, status), btn);
+    };
+    const refresh = (st: UpdateState) => (status.textContent = describe(st));
+    refresh(u.state);
+    stopUpdates = u.subscribe(refresh);
+    return [
+      // full-width text (like the other stacked rows), button below
+      h(
+        'div',
+        { class: 'set-row stack' },
+        h('div', { class: 'set-text', css: { 'align-self': 'stretch' } }, label, status),
+        h('button', { type: 'button', class: 'btn primary small', text: 'Check for updates', onClick: openUpdateDialog }),
+      ),
+      sw('autoUpdateCheck', 'Check for updates at startup', 'Quietly asks GitHub if a newer version exists. You decide whether to install it.'),
+    ];
+  };
+
+  // Windows app only: see-through window. Always starts off.
+  const transparencyRows = (): HTMLElement[] => {
+    if (!desktop) return [];
+    const min = Math.round(MIN_WINDOW_OPACITY * 100);
+    const slider = h('input', { type: 'range', class: 'range', min: String(min), max: '100', step: '5', 'aria-labelledby': 'set-opacity-label' });
+    slider.value = String(Math.round(s.windowOpacity * 100));
+    const value = h('span', { class: 'range-value', 'aria-hidden': 'true' });
+    const restore = h('button', { type: 'button', class: 'btn ghost small', text: 'Restore full opacity' });
+    const level = () => Number(slider.value) / 100;
+    const sync = () => {
+      const on = windowLook.transparent;
+      swt.setAttribute('aria-checked', String(on));
+      slider.disabled = !on;
+      restore.disabled = !on;
+      value.textContent = `${slider.value}%`;
+    };
+    const apply = async (on: boolean) => {
+      if (!(await windowLook.set(on, level())) && on) toast("Windows didn't allow transparency for this window.", { icon: 'info' });
+      sync();
+    };
+    const swt = toggle(windowLook.transparent, (on) => void apply(on), 'Window transparency');
+    slider.addEventListener('input', () => {
+      value.textContent = `${slider.value}%`;
+      void windowLook.set(true, level());
+    });
+    slider.addEventListener('change', () => set({ windowOpacity: level() }));
+    restore.addEventListener('click', () => void apply(false));
+    sync();
+    return [
+      row('Window transparency', 'See through the whole game window. Always off when the app starts.', swt, 'set-transparency'),
+      h(
+        'div',
+        { class: 'set-row', css: { 'flex-wrap': 'wrap' } },
+        h('div', { class: 'set-text' }, h('span', { id: 'set-opacity-label', class: 'set-label', text: 'Opacity' }), h('small', { text: `From ${min}% (most see-through) to 100%.` })),
+        h('div', { class: 'range-wrap' }, slider, value),
+      ),
+      h('div', { class: 'set-row', css: { 'flex-wrap': 'wrap' } }, h('div', { class: 'set-text' }, h('small', { text: 'Back to a normal, solid window.' })), restore),
+    ];
   };
 
   const el = h(
@@ -115,6 +152,7 @@ export const settingsScreen: ScreenFactory = (ctx) => {
           ),
           'set-theme',
         ),
+        transparencyRows(),
       ),
       section(
         'Gameplay',
@@ -199,11 +237,11 @@ export const settingsScreen: ScreenFactory = (ctx) => {
       section(
         'About',
         h('div', { class: 'set-row stack' }, h('div', { class: 'set-text' }, h('span', { class: 'set-label', text: 'Sudoku Master 1.0' }), h('small', { text: '500 hand-graded puzzles, a daily challenge, and a step-by-step hint guide. Free forever, with no ads or purchases.' }), offline)),
-        updateRow(),
+        updateRows(),
       ),
     ),
   );
-  return { el, title: 'Settings', destroy: () => stopProgress?.() };
+  return { el, title: 'Settings', destroy: () => stopUpdates?.() };
 };
 
 export const privacyScreen: ScreenFactory = (ctx) => {
@@ -238,7 +276,8 @@ export const privacyScreen: ScreenFactory = (ctx) => {
       h('p', { text: 'When installed or served over HTTPS, a service worker keeps a copy of the game’s own files so it works without a connection. It only ever caches the game itself.' }),
       h('p', { text: 'To receive updates, your browser may occasionally re-check those files with the website you installed the game from. That check never includes any of your game data, and the game works the same if it fails.' }),
       h('h2', { text: 'Updates in the Windows app' }),
-      h('p', { text: 'The Windows app never checks for updates on its own. Only when you click Settings → Check for updates does it contact GitHub, where the app is published, to see whether a newer version exists and, if so, download and install it. Like any download, GitHub sees the request (for example your IP address), but no game data is ever included.' }),
+      h('p', { text: 'A few seconds after it starts, the Windows app asks GitHub, where the app is published, whether a newer version exists. You can turn this off in Settings → Check for updates at startup, and check by hand at any time. If there is a new version you are told about it, and nothing is downloaded or installed unless you choose to. Every update is signed, and the app refuses to install one whose signature does not match.' }),
+      h('p', { text: 'Like any download, GitHub sees the request (for example your IP address), but no game data is ever included. Without a connection the check simply fails quietly and the game works as usual.' }),
       h('h2', { text: 'Microsoft Edge WebView2 (Windows app)' }),
       h('p', { text: 'The Windows app shows the game using Microsoft Edge WebView2, a component built into Windows. The game blocks all internet access from inside it, but Windows itself may send Microsoft diagnostic data about its components according to your Windows settings (Settings → Privacy & security → Diagnostics & feedback). Your game progress is never part of that.' }),
     ),

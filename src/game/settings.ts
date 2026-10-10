@@ -22,6 +22,11 @@ export interface Settings {
   textSize: TextSize;
   highContrast: boolean;
   reduceMotion: boolean;
+  // Windows app
+  /** Look for a newer version on GitHub when the app starts. */
+  autoUpdateCheck: boolean;
+  /** Window opacity used when transparency is switched on (it always starts off). */
+  windowOpacity: number;
 }
 
 export const DEFAULT_SETTINGS: Readonly<Settings> = {
@@ -40,11 +45,17 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   textSize: 'normal',
   highContrast: false,
   reduceMotion: false,
+  autoUpdateCheck: true,
+  windowOpacity: 0.85,
 };
+
+export const MIN_WINDOW_OPACITY = 0.4;
 
 const pick = <T extends string | number>(v: unknown, options: readonly T[], fallback: T): T =>
   options.includes(v as T) ? (v as T) : fallback;
 const bool = (v: unknown, fallback: boolean): boolean => (typeof v === 'boolean' ? v : fallback);
+const opacity = (v: unknown, fallback: number): number =>
+  typeof v === 'number' && Number.isFinite(v) ? Math.min(1, Math.max(MIN_WINDOW_OPACITY, Math.round(v * 100) / 100)) : fallback;
 
 /** Coerce anything (e.g. stale or corrupted storage) into valid settings. */
 export function sanitizeSettings(raw: unknown): Settings {
@@ -66,5 +77,7 @@ export function sanitizeSettings(raw: unknown): Settings {
     textSize: pick(r.textSize, ['normal', 'large', 'xlarge'] as const, d.textSize),
     highContrast: bool(r.highContrast, d.highContrast),
     reduceMotion: bool(r.reduceMotion, d.reduceMotion),
+    autoUpdateCheck: bool(r.autoUpdateCheck, d.autoUpdateCheck),
+    windowOpacity: opacity(r.windowOpacity, d.windowOpacity),
   };
 }

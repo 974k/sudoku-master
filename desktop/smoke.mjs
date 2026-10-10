@@ -2,7 +2,8 @@
 //   npm run smoke                 (the freshly built app)
 //   node smoke.mjs <path-to-exe>  (any build, e.g. the installed app)
 // Checks the game loads, the network is sealed, saving works and the update
-// bridge is present. Set SUDOKU_SMOKE_UPDATE=check to also ask GitHub for updates.
+// bridge is present. SUDOKU_SMOKE_UPDATE picks an extra test (see
+// src-tauri/src/smoke.js): check, auto, ui (installs an update!) or window.
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -24,7 +25,8 @@ if (!reportFile) {
   process.exit(1);
 }
 const data = JSON.parse(readFileSync(reportFile, 'utf8'));
-rmSync(reportFile, { force: true });
+// after an installed update, the new version writes its own report later
+if (!data.installing) rmSync(reportFile, { force: true });
 console.log(JSON.stringify(data, null, 2));
 
 const c = data.checks ?? {};
