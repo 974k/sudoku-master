@@ -239,6 +239,8 @@ export const privacyScreen: ScreenFactory = (ctx) => {
       h('p', { text: 'To receive updates, your browser may occasionally re-check those files with the website you installed the game from. That check never includes any of your game data, and the game works the same if it fails.' }),
       h('h2', { text: 'Updates in the Windows app' }),
       h('p', { text: 'The Windows app never checks for updates on its own. Only when you click Settings → Check for updates does it contact GitHub, where the app is published, to see whether a newer version exists and, if so, download and install it. Like any download, GitHub sees the request (for example your IP address), but no game data is ever included.' }),
+      h('h2', { text: 'Microsoft Edge WebView2 (Windows app)' }),
+      h('p', { text: 'The Windows app shows the game using Microsoft Edge WebView2, a component built into Windows. The game blocks all internet access from inside it, but Windows itself may send Microsoft diagnostic data about its components according to your Windows settings (Settings → Privacy & security → Diagnostics & feedback). Your game progress is never part of that.' }),
     ),
   );
   return { el, title: 'Privacy' };

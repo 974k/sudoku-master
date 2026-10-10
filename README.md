@@ -68,52 +68,51 @@ Referrer-Policy: no-referrer
 
 ## Windows app (.exe)
 
-`desktop/` wraps the same production build in Electron:
+`desktop/` wraps the same production build in a native window using [Tauri](https://tauri.app) and Microsoft Edge WebView2, which is built into Windows 10 and 11. The installer is only a few MB.
+
+Building it requires Rust and Microsoft's C++ build tools (Visual Studio Build Tools with the C++ workload):
 
 ```bash
 cd desktop
 npm install
-node node_modules/electron/install.js   # downloads the Electron runtime
-npm run dist                            # web build + privacy audit + both .exe files
-npm run smoke                           # self-test: game loads, network sealed, saving works
+npm run build        # web build + privacy audit + signed installer
+npm run smoke        # self-test: game loads, network sealed, saving works
 ```
 
-Output in `desktop/release/`:
-- `SudokuMaster-1.0.0-portable.exe`: a single file to run anywhere, with no install.
-- `SudokuMaster-1.0.0-setup.exe`: an installer with Start menu and desktop shortcuts. It installs per user, needs no admin rights, and removes its data on uninstall.
+The installer is written to `desktop/src-tauri/target/release/bundle/nsis/`. It installs for the current user without admin rights. When uninstalling, players can choose whether to delete their saved data.
 
-How the desktop app keeps your data private:
-- **No server, no open ports.** It loads the game's files from inside the app through a private `app://` scheme.
-- **No network access.** Any request for anything other than those files is cancelled, on top of the page's own CSP.
-- **No permissions, popups or outside pages.** Every permission request is denied, and new windows and navigation away from the game are blocked.
-- **Nothing phoning home.** Spellcheck is off, and there's no crash reporter, telemetry or background update check.
+How the Windows app keeps your data private:
+- **No network access from the game.** The page's Content Security Policy only allows Tauri's own in-app channel, so the game can't reach the internet. Navigation away from the game is refused.
+- **No service worker.** The app's files are already local.
+- **Nothing phoning home.** There's no telemetry, crash reporting or background update check.
+- **WebView2 caveat.** WebView2 is a Windows component, so Windows itself may send Microsoft diagnostic data about it according to the player's Windows settings. The app can't change that, and the Privacy page says so.
 
-Progress is saved in `%APPDATA%\Sudoku Master`, separately from any browser copy of the game. The .exe files are unsigned, so Windows SmartScreen may show a warning the first time; choose *More info → Run anyway*.
+Progress is saved in the app's own WebView2 storage (`%LOCALAPPDATA%app.sudokumaster.desktop`), separately from any browser copy of the game. The installer is unsigned, so Windows SmartScreen may show a warning the first time; choose *More info → Run anyway*.
 
 ### Updates
 
 The installed app has **Settings → Check for updates**. One click does the whole update:
-1. It checks this repository's [GitHub Releases](https://github.com/974k/sudoku-master/releases).
-2. It downloads the new installer and verifies its SHA-512 checksum from `latest.yml`.
-3. It installs silently and restarts. Saved progress is kept.
+1. It reads `latest.json` from this repository's [latest release](https://github.com/974k/sudoku-master/releases/latest).
+2. It downloads the new installer and **verifies its signature** against the public key built into the app. Unsigned or tampered installers are rejected.
+3. It installs and restarts. Saved progress is kept.
 
-How the updater stays private:
-- It only runs on that click; nothing checks in the background.
-- Its network session may reach only GitHub's release hosts, and only while that update is running.
-- The game page itself stays sealed and asks the main process to do the work.
-- No game data is sent.
+It only runs on that click and never sends game data.
 
-The portable .exe can't replace itself, so it offers to open the download page instead.
+Updates are signed with a private key stored outside the repository, at `%USERPROFILE%.taurisudoku-master.key`. **Back this file up.** Without it, installed copies can't accept future updates, and players would have to reinstall manually.
 
 To publish a new version:
 
 ```bash
 cd desktop
-# 1. bump "version" in desktop/package.json, e.g. 1.0.2
-npm run release      # builds, then creates the GitHub Release with the installer, latest.yml and .blockmap
+# 1. bump "version" in desktop/package.json, e.g. 1.1.1
+npm run release      # builds, signs, and creates the GitHub Release (installer, latest.json, latest.yml)
 ```
 
-`npm run release` needs the GitHub CLI signed in (`gh auth login`). Installed copies find the new version the next time a player clicks the button.
+`npm run release` needs the GitHub CLI signed in (`gh auth login`).
+
+### Moving from 1.0.x (Electron)
+
+Versions 1.0.0 and 1.0.1 were built with Electron. Their update button installs the new version through `latest.yml` in each release. The new installer removes the old app but keeps its data, and on first launch the app imports the player's progress (once only).
 
 ## How the puzzles work
 

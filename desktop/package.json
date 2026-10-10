@@ -1,69 +1,17 @@
 {
   "name": "sudoku-master-desktop",
   "productName": "Sudoku Master",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "private": true,
-  "description": "Sudoku Master for Windows: the same ad-free, offline game in a desktop window.",
+  "description": "Sudoku Master for Windows: the same ad-free, offline game in a native window (Tauri + WebView2).",
   "author": "Sudoku Master",
-  "main": "main.cjs",
   "scripts": {
     "prepare-app": "npm --prefix .. run build && node copy-app.mjs",
-    "start": "npm run prepare-app && electron .",
+    "build": "npm run prepare-app && node tauri-build.mjs",
     "smoke": "node smoke.mjs",
-    "dist": "npm run prepare-app && electron-builder --win --publish never",
     "release": "node release.mjs"
   },
-  "build": {
-    "appId": "app.sudokumaster.desktop",
-    "productName": "Sudoku Master",
-    "copyright": "Free and ad-free. No data collection.",
-    "files": [
-      "main.cjs",
-      "preload.cjs",
-      "app/**/*"
-    ],
-    "directories": {
-      "output": "release"
-    },
-    "win": {
-      "icon": "icon.png",
-      "target": [
-        {
-          "target": "portable",
-          "arch": [
-            "x64"
-          ]
-        },
-        {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        }
-      ]
-    },
-    "portable": {
-      "artifactName": "SudokuMaster-${version}-portable.exe"
-    },
-    "nsis": {
-      "artifactName": "SudokuMaster-${version}-setup.exe",
-      "shortcutName": "Sudoku Master",
-      "deleteAppDataOnUninstall": true
-    },
-    "publish": [
-      {
-        "provider": "github",
-        "owner": "974k",
-        "repo": "sudoku-master",
-        "releaseType": "release"
-      }
-    ]
-  },
   "devDependencies": {
-    "electron": "^44.7.0",
-    "electron-builder": "^26.15.3"
-  },
-  "dependencies": {
-    "electron-updater": "^6.8.9"
+    "@tauri-apps/cli": "^2.12.1"
   }
 }
