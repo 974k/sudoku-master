@@ -3,3 +3,6 @@ dist/
 *.tsbuildinfo
 .DS_Store
 Thumbs.db
+
+# Private development notes (e.g. private/change-log.md): never committed, shipped or published
+/private/

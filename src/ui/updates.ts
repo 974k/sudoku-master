@@ -49,6 +49,27 @@ export function compareVersions(a: string, b: string): number {
   return x.pre < y.pre ? -1 : 1;
 }
 
+/**
+ * The "What's New" points of a release, from the Markdown notes published
+ * with it (desktop/release-notes/<version>.md). Shown as plain text only.
+ */
+export function parseReleaseNotes(md: string | null | undefined, max = 8): string[] {
+  const clean = (s: string) => {
+    const t = s
+      .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1') // links and images: keep the text
+      .replace(/`([^`]*)`/g, '$1')
+      .replace(/(\*\*|__)(.+?)\1/g, '$2')
+      .replace(/(^|\s)[*_](\S(?:.*?\S)?)[*_](?=\s|[.,;:!?]|$)/g, '$1$2')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return t.length > 200 ? `${t.slice(0, 199)}…` : t;
+  };
+  const lines = (md ?? '').split(/\r?\n/).map((l) => l.trim());
+  const bullets = lines.map((l) => /^(?:[-*+•]|\d+[.)])\s+(.+)$/.exec(l)?.[1]).filter((l): l is string => !!l);
+  const text = bullets.length ? bullets : lines.filter((l) => l && !/^(#|<!--|---|===)/.test(l));
+  return text.map(clean).filter(Boolean).slice(0, max);
+}
+
 export function failureReason(err: unknown): UpdateFailure {
   const msg = String(err instanceof Error ? err.message : err);
   return msg === 'offline' || msg === 'unavailable' || msg === 'verify' ? msg : 'failed';
@@ -58,6 +79,8 @@ export class UpdateController {
   state: UpdateState = { phase: 'idle' };
   /** The installed version, once known. */
   current: string | null = null;
+  /** "What's New" in the newer version, from its release notes (may be empty). */
+  whatsNew: string[] = [];
   private listeners = new Set<(s: UpdateState) => void>();
   private inFlight: Promise<UpdateState> | null = null;
   private readonly bridge: DesktopBridge;
@@ -98,6 +121,7 @@ export class UpdateController {
         this.current = res.current;
         if (res.status === 'available' && res.version && compareVersions(res.version, res.current) > 0) {
           const v = { current: res.current, version: res.version };
+          this.whatsNew = parseReleaseNotes(res.notes);
           this.set(res.portable ? { phase: 'manual', ...v } : { phase: 'available', ...v });
         } else {
           this.set({ phase: 'latest', current: res.current });

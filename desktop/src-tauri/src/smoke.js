@@ -2,7 +2,7 @@
 // Modes (SUDOKU_SMOKE_UPDATE):
 //   ""       basic checks
 //   "check"  ask GitHub for an update through the bridge
-//   "auto"   the quiet startup check: no banner during a game, one afterwards if newer
+//   "auto"   the quiet startup check: no popup during a game, "Update available" afterwards if newer
 //   "ui"     Settings → Check for updates like a player: download, confirm, install (installs!)
 //   "window" F11 full screen and window transparency (the window is shown)
 (async () => {
@@ -51,12 +51,19 @@
     } else if (MODE === 'auto') {
       // still in a game when the startup check (4 s) finishes
       await wait(6500);
-      c.bannerDuringGame = !!document.querySelector('.update-banner');
-      c.dialogDuringGame = !!document.querySelector('dialog[open]');
+      c.popupDuringGame = !!document.querySelector('dialog[open]');
       c.stillOnGame = location.hash;
       location.hash = '#/';
       await wait(900);
-      c.bannerAfterGame = document.querySelector('.update-banner')?.textContent ?? null;
+      const popup = document.querySelector('.update-dialog[open]');
+      c.popupAfterGame = popup
+        ? {
+            title: popup.querySelector('h2')?.textContent,
+            version: popup.querySelector('.update-hero')?.innerText.replace(/\s+/g, ' '),
+            whatsNew: [...popup.querySelectorAll('.whats-new li')].map((li) => li.textContent),
+            buttons: [...popup.querySelectorAll('.dialog-actions button')].map((b) => b.textContent),
+          }
+        : null;
       c.updateButtonAfter = document.querySelector('.home-update')?.getAttribute('aria-label') ?? null;
       c.updateDotShown = document.querySelector('.update-dot') ? !document.querySelector('.update-dot').hidden : null;
     } else if (MODE === 'ui') {
@@ -82,9 +89,11 @@
         }
         return false;
       };
-      await until(/latest version|is available|Couldn't|didn't|couldn't/, 30000);
-      c.versionsShown = dlg()?.querySelector('.update-versions')?.innerText.replace(/\s+/g, ' ');
-      const download = buttonByText(dlg(), 'Download');
+      await until(/latest version|downloads from GitHub|can't update itself|Couldn't|didn't|couldn't/, 30000);
+      const shown = [...(dlg()?.querySelectorAll('.update-versions, .update-hero') ?? [])].find((el) => !el.hidden);
+      c.versionsShown = shown?.innerText.replace(/\s+/g, ' ');
+      c.whatsNew = [...(dlg()?.querySelectorAll('.whats-new:not([hidden]) li') ?? [])].map((li) => li.textContent);
+      const download = buttonByText(dlg(), 'Update Now');
       if (download) {
         download.click();
         await until(/verified|Couldn't|didn't|couldn't|interrupted/, 120000);

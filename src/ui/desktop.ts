@@ -6,6 +6,8 @@ export interface UpdateCheck {
   current: string;
   version?: string;
   portable?: boolean;
+  /** Release notes of the newer version (Markdown), if it has any. */
+  notes?: string | null;
 }
 
 export interface DesktopBridge {

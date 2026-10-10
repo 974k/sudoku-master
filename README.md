@@ -94,25 +94,33 @@ Progress is saved in the app's own WebView2 storage (`%LOCALAPPDATA%\app.sudokum
 
 ### Updates
 
-A few seconds after it starts, the app reads `latest.json` from this repository's [latest release](https://github.com/974k/sudoku-master/releases/latest) and compares version numbers. If a newer version exists, a small banner and a dot on the Home update button say so. Nothing else happens on its own:
-- The banner never appears during a game or lesson; it waits until the player leaves it.
+A few seconds after it starts, the app reads `latest.json` from this repository's [latest release](https://github.com/974k/sudoku-master/releases/latest) and compares version numbers. If a newer version exists, an **Update available** popup shows the new version and its *What's New* (the release notes), with *Update Now* and *Later*. A dot on the Home update button also marks it. Nothing else happens on its own:
+- The popup never appears during a game or lesson; it waits until the player leaves it, and appears once per launch.
 - Offline, or if GitHub doesn't answer, the check fails silently and the game works as usual.
 - Players can turn the check off (Settings → *Check for updates at startup*).
 
-The update dialog (the Home update button, or **Settings → Check for updates**) checks right away and shows the installed and available versions. Then:
-1. **Download** fetches the new installer with a progress bar and **verifies its signature** against the public key built into the app. Unsigned or tampered installers are rejected.
+The same dialog opens from the Home update button or **Settings → Check for updates**, which check right away. Then:
+1. **Update Now** fetches the new installer with a progress bar and **verifies its signature** against the public key built into the app. Unsigned or tampered installers are rejected.
 2. **Install and restart** asks for confirmation, closes the app, installs, and reopens it. Progress and settings are kept.
 
 Every failure has a clear message, the current version keeps working, and a *Release page* button opens the GitHub release for a manual download.
 
 Updates are signed with a private key stored outside the repository, at `%USERPROFILE%\.tauri\sudoku-master.key`. **Back this file up.** Without it, installed copies can't accept future updates, and players would have to reinstall manually.
 
+#### Change log and release notes
+
+There are two separate records:
+- **Private change log** (`private/change-log.md`): development memory with one entry per commit, so nothing is forgotten at release time. The folder is git-ignored. The release script refuses to run if anything in it is tracked, and the build's privacy audit fails if it would ship. It is never committed, packaged or published.
+- **Release notes** (`desktop/release-notes/<version>.md`): the short, player-facing *What's New*, written from the private log when preparing a release. `npm run release` puts it into `latest.json` (shown in the app's update popup) and the GitHub release.
+
 To publish a new version:
 
 ```bash
 cd desktop
-# 1. bump "version" in desktop/package.json, e.g. 1.1.1
-npm run release      # builds, signs, and creates the GitHub Release (installer, latest.json, latest.yml)
+# 1. bump "version" in desktop/package.json, e.g. 1.3.1
+# 2. write release-notes/<version>.md from the entries in ../private/change-log.md since the last release
+node release.mjs --dry-run   # optional: builds everything into release/ and publishes nothing
+npm run release              # builds, signs, and creates the GitHub Release (installer, latest.json, latest.yml)
 ```
 
 `npm run release` needs the GitHub CLI signed in (`gh auth login`).

@@ -66,8 +66,10 @@ async fn update_check(app: AppHandle, state: State<'_, Updates>) -> Result<Value
     Ok(match found {
         Some(update) => {
             let version = update.version.clone();
+            // "What's New": the release notes in latest.json (desktop/release-notes/<version>.md)
+            let notes = update.body.clone();
             *state.pending.lock().unwrap() = Some(update);
-            json!({ "status": "available", "current": current, "version": version })
+            json!({ "status": "available", "current": current, "version": version, "notes": notes })
         }
         None => json!({ "status": "latest", "current": current }),
     })

@@ -1,6 +1,6 @@
-// Windows app only: the update dialog, the discreet "new version" banner and
-// the update button on Home. In the web version `updates` is null and none of
-// this appears.
+// Windows app only: the update dialog (an "Update available" popup with
+// What's New once a newer version is known) and the update button on Home.
+// In the web version `updates` is null and none of this appears.
 
 import { confirmDialog, progressBar } from './components.ts';
 import { desktop } from './desktop.ts';
@@ -10,7 +10,7 @@ import { UpdateController, type UpdateState } from './updates.ts';
 
 export const updates: UpdateController | null = desktop ? new UpdateController(desktop) : null;
 
-/** Screens where a banner would get in the way of play. */
+/** Screens where a popup would get in the way of play. */
 const playing = () => /^#\/(play|tutorial)\//.test(location.hash);
 
 const ERRORS = {
@@ -36,22 +36,22 @@ export function openUpdateDialog(): void {
   const u = updates;
   if (!u) return;
   if (openDialog) return openDialog.focus();
-  dismissBanner();
 
   const dlg = h('dialog', { class: 'dialog update-dialog', 'aria-labelledby': 'upd-title' });
+  const title = h('span', { text: 'App updates' });
   const installed = h('dd', { text: u.current ?? '…' });
   if (!u.current) void desktop?.info().then((i) => i && !u.current && (installed.textContent = i.version), () => undefined);
   const latest = h('dd', { text: '…' });
+  const versions = h('dl', { class: 'update-versions' }, h('dt', { text: 'Installed version' }), installed, h('dt', { text: 'Available version' }), latest);
+  // shown once a newer version is known
+  const heroVersion = h('strong');
+  const heroNote = h('small');
+  const hero = h('div', { class: 'update-hero' }, heroVersion, heroNote);
+  const whatsNew = h('section', { class: 'whats-new', 'aria-labelledby': 'upd-new' });
   const message = h('p', { class: 'update-msg', role: 'status', 'aria-live': 'polite' });
   const extra = h('div', { class: 'update-extra' });
   const actions = h('div', { class: 'dialog-actions' });
-  dlg.append(
-    h('h2', { id: 'upd-title' }, icon('download'), ' App updates'),
-    h('dl', { class: 'update-versions' }, h('dt', { text: 'Installed version' }), installed, h('dt', { text: 'Available version' }), latest),
-    message,
-    extra,
-    actions,
-  );
+  dlg.append(h('h2', { id: 'upd-title' }, icon('download'), title), versions, hero, whatsNew, message, extra, actions);
 
   const close = () => {
     off();
@@ -75,6 +75,19 @@ export function openUpdateDialog(): void {
   const render = (s: UpdateState) => {
     if (u.current) installed.textContent = u.current;
     latest.textContent = 'version' in s && s.version ? s.version : s.phase === 'latest' ? `${s.current} (latest)` : s.phase === 'checking' ? 'Checking…' : '—';
+    // a newer version: headline it, with what's new in it
+    const newer = s.phase === 'available' || s.phase === 'manual' || s.phase === 'downloading' || s.phase === 'ready' || s.phase === 'installing' ? s : null;
+    title.textContent = newer ? 'Update available' : 'App updates';
+    versions.hidden = !!newer;
+    hero.hidden = !newer;
+    if (newer) {
+      heroVersion.textContent = `Sudoku Master ${newer.version}`;
+      heroNote.textContent = `You have version ${newer.current}`;
+    }
+    whatsNew.hidden = !newer || !u.whatsNew.length;
+    if (newer && u.whatsNew.length && !whatsNew.childElementCount) {
+      whatsNew.append(h('h3', { id: 'upd-new', text: "What's New" }), h('ul', null, u.whatsNew.map((item) => h('li', { text: item }))));
+    }
     extra.replaceChildren();
     let buttons: HTMLElement[] = [];
     switch (s.phase) {
@@ -88,11 +101,11 @@ export function openUpdateDialog(): void {
         buttons = [button('Close', 'ghost', close), button('Check again', 'primary', () => void u.check())];
         break;
       case 'available':
-        message.textContent = `Version ${s.version} is available. It downloads from GitHub, and its signature is checked before anything is installed.`;
-        buttons = [button('Later', 'ghost', close), button('Download', 'primary', () => void u.download())];
+        message.textContent = "It downloads from GitHub and its signature is checked before anything is installed. You'll be asked before it installs.";
+        buttons = [button('Later', 'ghost', close), button('Update Now', 'primary', () => void u.download())];
         break;
       case 'manual':
-        message.textContent = `Version ${s.version} is available. This copy can't update itself, so please download it from the release page.`;
+        message.textContent = "This copy can't update itself, so please download the new version from the release page.";
         buttons = [button('Close', 'ghost', close), button('Open release page', 'primary', () => u.openReleasePage())];
         break;
       case 'downloading':
@@ -149,41 +162,24 @@ export function updateButton(): HTMLElement | null {
 }
 
 // ---------------------------------------------------------------------------
-// startup check and banner
+// startup check
 
-let banner: HTMLElement | null = null;
-let bannerTimer = 0;
-
-function dismissBanner(): void {
-  clearTimeout(bannerTimer);
-  banner?.remove();
-  banner = null;
-}
-
-function showBanner(version: string): void {
-  dismissBanner();
-  banner = h(
-    'div',
-    { class: 'update-banner', role: 'status' },
-    icon('download'),
-    h('span', { text: `Version ${version} is available` }),
-    h('button', { type: 'button', class: 'btn primary small', text: 'View', onClick: openUpdateDialog }),
-    h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Dismiss', title: 'Dismiss', onClick: dismissBanner }, icon('close')),
-  );
-  document.body.appendChild(banner);
-  bannerTimer = window.setTimeout(dismissBanner, 15_000);
-}
-
-/** Tells the player about a new version once, but never in the middle of a game. */
-function announce(version: string): void {
-  const show = () => {
-    if (playing()) return;
-    window.removeEventListener('hashchange', show);
-    if (!openDialog) showBanner(version);
+/** Opens the "Update available" popup once, but never in the middle of a game or over another dialog. */
+function announce(): void {
+  let timer = 0;
+  const stop = () => {
+    clearInterval(timer);
+    window.removeEventListener('hashchange', tryShow);
   };
-  window.addEventListener('hashchange', show);
-  window.addEventListener('hashchange', () => playing() && dismissBanner());
-  show();
+  function tryShow(): void {
+    if (openDialog) return stop(); // the player already opened it
+    if (playing() || document.querySelector('dialog[open]')) return;
+    stop();
+    openUpdateDialog();
+  }
+  timer = window.setInterval(tryShow, 2000);
+  window.addEventListener('hashchange', tryShow);
+  tryShow();
 }
 
 /** Checks GitHub quietly a few seconds after start, if the player allows it. */
@@ -193,6 +189,6 @@ export function startUpdateCheck(enabled: () => boolean, delayMs = 4000): void {
   setTimeout(async () => {
     if (!enabled()) return;
     const s = await u.check({ silent: true });
-    if (s.phase === 'available' || s.phase === 'manual') announce(s.version);
+    if (s.phase === 'available' || s.phase === 'manual') announce();
   }, delayMs);
 }

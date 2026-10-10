@@ -108,6 +108,15 @@ else {
 }
 if (!html.includes('name="referrer" content="no-referrer"')) problems.push('missing no-referrer policy');
 
+// 5. Private development notes (private/change-log.md) never ship.
+const PRIVATE_MARKER = 'PRIVATE-CHANGE-LOG';
+for (const file of files) {
+  const rel = relative(dist, file).replace(/\\/g, '/');
+  if (/(^|\/)private\/|change-?log/i.test(rel)) problems.push(`private development file shipped: ${rel}`);
+  else if (readFileSync(file).includes(PRIVATE_MARKER)) problems.push(`${rel}: contains the private change log`);
+}
+notes.push('no private development notes shipped');
+
 if (problems.length) {
   console.error('\n✗ Privacy audit FAILED:\n' + problems.map((p) => `  - ${p}`).join('\n') + '\n');
   process.exit(1);

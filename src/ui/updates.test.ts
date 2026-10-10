@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { DesktopBridge, UpdateCheck } from './desktop.ts';
-import { UpdateController, compareVersions, type UpdateState } from './updates.ts';
+import { UpdateController, compareVersions, parseReleaseNotes, type UpdateState } from './updates.ts';
 
 /** A stand-in for the Windows app's bridge, scripted per test. */
 function fakeBridge(o: { check?: () => Promise<UpdateCheck>; download?: () => Promise<void>; install?: () => Promise<void> } = {}) {
@@ -55,6 +55,49 @@ describe('version comparison', () => {
     expect(compareVersions('1.2.0-beta', '1.2.0')).toBe(-1);
     expect(compareVersions('1.2.0', '1.2.0-rc.1')).toBe(1);
     expect(compareVersions('1.2.0-beta', '1.1.9')).toBe(1);
+  });
+});
+
+describe("What's New from release notes", () => {
+  it('takes the bullet points of the release notes as plain text', () => {
+    const md = [
+      '# Sudoku Master 1.3.0',
+      '',
+      'A short intro line.',
+      '',
+      '- **Sudoku AI**: new puzzles generated on your device',
+      '* Improved the [update](https://example.com) popup',
+      '• Fixed `F11` returning a snapped window to the wrong size',
+      '1. Faster _hints_',
+    ].join('\n');
+    expect(parseReleaseNotes(md)).toEqual([
+      'Sudoku AI: new puzzles generated on your device',
+      'Improved the update popup',
+      'Fixed F11 returning a snapped window to the wrong size',
+      'Faster hints',
+    ]);
+  });
+
+  it('falls back to plain lines, and copes with no notes at all', () => {
+    expect(parseReleaseNotes('## Heading\nBug fixes and improvements.\n<!-- comment -->')).toEqual(['Bug fixes and improvements.']);
+    expect(parseReleaseNotes(null)).toEqual([]);
+    expect(parseReleaseNotes('   ')).toEqual([]);
+  });
+
+  it('keeps the list short and each point readable', () => {
+    const many = Array.from({ length: 20 }, (_, i) => `- point ${i}`).join('\n');
+    expect(parseReleaseNotes(many)).toHaveLength(8);
+    expect(parseReleaseNotes(`- ${'x'.repeat(500)}`)[0]!.length).toBe(200);
+  });
+
+  it('reaches the update popup through the update check', async () => {
+    const notes = '- Added the Randomizer\n- Fixed full screen';
+    const u = new UpdateController(fakeBridge({ check: async () => ({ status: 'available', current: '1.2.1', version: '1.3.0', notes }) }).bridge);
+    await u.check({ silent: true });
+    expect(u.whatsNew).toEqual(['Added the Randomizer', 'Fixed full screen']);
+    const none = new UpdateController(fakeBridge({ check: available('1.3.0') }).bridge);
+    await none.check();
+    expect(none.whatsNew).toEqual([]);
   });
 });
 
