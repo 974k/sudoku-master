@@ -86,9 +86,34 @@ How the desktop app keeps your data private:
 - **No server, no open ports.** It loads the game's files from inside the app through a private `app://` scheme.
 - **No network access.** Any request for anything other than those files is cancelled, on top of the page's own CSP.
 - **No permissions, popups or outside pages.** Every permission request is denied, and new windows and navigation away from the game are blocked.
-- **Nothing phoning home.** Spellcheck is off, and there's no auto-updater, crash reporter or telemetry.
+- **Nothing phoning home.** Spellcheck is off, and there's no crash reporter, telemetry or background update check.
 
 Progress is saved in `%APPDATA%\Sudoku Master`, separately from any browser copy of the game. The .exe files are unsigned, so Windows SmartScreen may show a warning the first time; choose *More info → Run anyway*.
+
+### Updates
+
+The installed app has **Settings → Check for updates**. One click does the whole update:
+1. It checks this repository's [GitHub Releases](https://github.com/974k/sudoku-master/releases).
+2. It downloads the new installer and verifies its SHA-512 checksum from `latest.yml`.
+3. It installs silently and restarts. Saved progress is kept.
+
+How the updater stays private:
+- It only runs on that click; nothing checks in the background.
+- Its network session may reach only GitHub's release hosts, and only while that update is running.
+- The game page itself stays sealed and asks the main process to do the work.
+- No game data is sent.
+
+The portable .exe can't replace itself, so it offers to open the download page instead.
+
+To publish a new version:
+
+```bash
+cd desktop
+# 1. bump "version" in desktop/package.json, e.g. 1.0.2
+npm run release      # builds, then creates the GitHub Release with the installer, latest.yml and .blockmap
+```
+
+`npm run release` needs the GitHub CLI signed in (`gh auth login`). Installed copies find the new version the next time a player clicks the button.
 
 ## How the puzzles work
 

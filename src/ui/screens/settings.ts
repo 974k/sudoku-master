@@ -1,6 +1,7 @@
 import type { Settings } from '../../game/settings.ts';
 import type { ScreenFactory } from '../app.ts';
 import { confirmDialog, segmented, toast, toggle, topBar } from '../components.ts';
+import { desktop } from '../desktop.ts';
 import { h, type Child } from '../dom.ts';
 import { icon } from '../icons.ts';
 
@@ -28,12 +29,60 @@ export const settingsScreen: ScreenFactory = (ctx) => {
   refreshUsage();
 
   const offline = h('small', { text: 'Checking…' });
-  if ('serviceWorker' in navigator) {
+  if (desktop) offline.textContent = 'Works fully offline.';
+  else if ('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistration().then(
       (r) => (offline.textContent = r?.active ? 'Ready to play offline.' : 'Offline mode activates after the first load of the installed app.'),
       () => (offline.textContent = 'Offline mode unavailable in this browser.'),
     );
   } else offline.textContent = 'Offline mode unavailable in this browser.';
+
+  // Windows app only: one click checks GitHub, downloads, installs and restarts.
+  let stopProgress: (() => void) | null = null;
+  const updateRow = (): HTMLElement | null => {
+    if (!desktop) return null;
+    const bridge = desktop;
+    const status = h('small', { text: 'Contacts GitHub only when you click. No game data is sent.' });
+    const label = h('span', { class: 'set-label', text: 'App updates' });
+    const btn = h('button', { type: 'button', class: 'btn primary small', text: 'Check for updates' });
+    void bridge.info().then((i) => i && (label.textContent = `App updates · version ${i.version}`));
+    let next: (() => void) | null = null;
+    const idle = (text: string, button: string, action: () => void = run) => {
+      status.textContent = text;
+      btn.textContent = button;
+      btn.disabled = false;
+      next = action;
+    };
+    async function run(): Promise<void> {
+      btn.disabled = true;
+      btn.textContent = 'Checking…';
+      status.textContent = 'Looking for a newer version…';
+      try {
+        const res = await bridge.checkForUpdate();
+        if (res.status === 'unsupported') return idle('Updates work in the installed app.', 'Check for updates');
+        if (res.status === 'latest') return idle(`You have the latest version (${res.current}).`, 'Check again');
+        if (res.portable) {
+          return idle(`Version ${res.version} is available. This portable copy can't update itself; download the new version from GitHub.`, 'Open download page', () => void bridge.openReleasesPage());
+        }
+        btn.textContent = 'Updating…';
+        status.textContent = `Downloading version ${res.version}…`;
+        stopProgress = bridge.onProgress((pct) => (status.textContent = `Downloading version ${res.version}… ${pct}%`));
+        await bridge.downloadUpdate();
+        stopProgress();
+        stopProgress = null;
+        status.textContent = `Installing version ${res.version}. Sudoku Master will restart — your progress is saved.`;
+        await new Promise((r) => setTimeout(r, 1500));
+        await bridge.installUpdate();
+      } catch {
+        stopProgress?.();
+        stopProgress = null;
+        idle("Couldn't reach GitHub. Check your internet connection and try again.", 'Try again');
+      }
+    }
+    next = run;
+    btn.addEventListener('click', () => next?.());
+    return h('div', { class: 'set-row stack' }, h('div', { class: 'set-text' }, label, status), btn);
+  };
 
   const el = h(
     'main',
@@ -149,10 +198,11 @@ export const settingsScreen: ScreenFactory = (ctx) => {
       section(
         'About',
         h('div', { class: 'set-row stack' }, h('div', { class: 'set-text' }, h('span', { class: 'set-label', text: 'Sudoku Master 1.0' }), h('small', { text: '500 hand-graded puzzles, a daily challenge, and a step-by-step hint guide. Free forever, with no ads or purchases.' }), offline)),
+        updateRow(),
       ),
     ),
   );
-  return { el, title: 'Settings' };
+  return { el, title: 'Settings', destroy: () => stopProgress?.() };
 };
 
 export const privacyScreen: ScreenFactory = (ctx) => {
@@ -186,6 +236,8 @@ export const privacyScreen: ScreenFactory = (ctx) => {
       h('h2', { text: 'Offline use' }),
       h('p', { text: 'When installed or served over HTTPS, a service worker keeps a copy of the game’s own files so it works without a connection. It only ever caches the game itself.' }),
       h('p', { text: 'To receive updates, your browser may occasionally re-check those files with the website you installed the game from. That check never includes any of your game data, and the game works the same if it fails.' }),
+      h('h2', { text: 'Updates in the Windows app' }),
+      h('p', { text: 'The Windows app never checks for updates on its own. Only when you click Settings → Check for updates does it contact GitHub, where the app is published, to see whether a newer version exists and, if so, download and install it. Like any download, GitHub sees the request (for example your IP address), but no game data is ever included.' }),
     ),
   );
   return { el, title: 'Privacy' };

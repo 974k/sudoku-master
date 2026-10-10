@@ -10,7 +10,8 @@
     "prepare-app": "npm --prefix .. run build && node copy-app.mjs",
     "start": "npm run prepare-app && electron .",
     "smoke": "node smoke.mjs",
-    "dist": "npm run prepare-app && electron-builder --win"
+    "dist": "npm run prepare-app && electron-builder --win --publish never",
+    "release": "node release.mjs"
   },
   "build": {
     "appId": "app.sudokumaster.desktop",
@@ -18,6 +19,7 @@
     "copyright": "Free and ad-free. No data collection.",
     "files": [
       "main.cjs",
+      "preload.cjs",
       "app/**/*"
     ],
     "directories": {
@@ -47,10 +49,21 @@
       "artifactName": "SudokuMaster-${version}-setup.exe",
       "shortcutName": "Sudoku Master",
       "deleteAppDataOnUninstall": true
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "974k",
+        "repo": "sudoku-master",
+        "releaseType": "release"
+      }
+    ]
   },
   "devDependencies": {
     "electron": "^44.7.0",
     "electron-builder": "^26.15.3"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
   }
 }

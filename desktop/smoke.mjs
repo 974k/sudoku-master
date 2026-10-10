@@ -20,6 +20,8 @@ const ok =
   data.checks?.boardCells === 81 &&
   String(data.checks?.pageFetchExternal).startsWith('blocked') &&
   data.checks?.imageBeacon === 'blocked' &&
-  data.checks?.storageWorks === true;
+  data.checks?.storageWorks === true &&
+  data.checks?.bridge === 'object' &&
+  data.checks?.updaterRequestsBeforeClick === 0;
 console.log(ok ? '\n✓ Desktop smoke test passed' : '\n✗ Desktop smoke test FAILED');
 process.exit(ok ? 0 : 1);
