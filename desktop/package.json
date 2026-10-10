@@ -1,7 +1,7 @@
 {
   "name": "sudoku-master-desktop",
   "productName": "Sudoku Master",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "private": true,
   "description": "Sudoku Master for Windows: the same ad-free, offline game in a native window (Tauri + WebView2).",
   "author": "Sudoku Master",

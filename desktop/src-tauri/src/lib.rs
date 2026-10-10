@@ -14,6 +14,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use serde_json::{Map, Value, json};
 use tauri::webview::PageLoadEvent;
@@ -28,6 +29,15 @@ const LEGACY_MARKER: &str = "legacy-imported";
 /// Window opacity chosen by the player for this session (1.0 = opaque).
 struct WindowLook {
     opacity: Mutex<f64>,
+    /// Where the window was before F11 (see toggle_fullscreen).
+    before_fullscreen: Mutex<Option<BeforeFullscreen>>,
+}
+
+#[derive(Clone, Copy)]
+struct BeforeFullscreen {
+    /// Exact outer rectangle (left, top, right, bottom) if the window wasn't maximized.
+    rect: Option<[i32; 4]>,
+    since: Instant,
 }
 
 #[derive(Default)]
@@ -120,12 +130,68 @@ fn open_releases_page() {
 // ---------------------------------------------------------------------------
 // full screen and transparency
 
+/// F11. Leaving full screen returns to the previous state: maximized, or the
+/// window's exact previous size and place. The window library restores the
+/// latter from Windows' saved placement, which for a snapped ("half-screen")
+/// window is its size before snapping, so the exact rectangle is put back too.
 #[tauri::command]
-fn toggle_fullscreen(window: WebviewWindow) -> Result<bool, String> {
-    let next = !window.is_fullscreen().map_err(|e| e.to_string())?;
-    window.set_fullscreen(next).map_err(|e| e.to_string())?;
-    Ok(next)
+fn toggle_fullscreen(window: WebviewWindow, look: State<'_, WindowLook>) -> Result<bool, String> {
+    if window.is_fullscreen().map_err(|e| e.to_string())? {
+        leave_fullscreen(&window, &look);
+        return Ok(false);
+    }
+    let rect = if window.is_maximized().unwrap_or(false) { None } else { window_rect(&window) };
+    *look.before_fullscreen.lock().unwrap() = Some(BeforeFullscreen { rect, since: Instant::now() });
+    window.set_fullscreen(true).map_err(|e| e.to_string())?;
+    Ok(true)
 }
+
+fn leave_fullscreen(window: &WebviewWindow, look: &WindowLook) {
+    let before = look.before_fullscreen.lock().unwrap().take();
+    let _ = window.set_fullscreen(false);
+    if let Some(rect) = before.and_then(|b| b.rect) {
+        if window_rect(window) != Some(rect) {
+            set_window_rect(window, rect);
+        }
+    }
+}
+
+/// Windows can un-maximize or resize a full-screen window (e.g. Win+Down),
+/// which would leave it without a title bar; full screen is then left properly.
+fn fullscreen_disturbed(window: &tauri::Window) -> bool {
+    let Some(before) = *window.state::<WindowLook>().before_fullscreen.lock().unwrap() else { return false };
+    if before.since.elapsed() < Duration::from_secs(1) || !window.is_fullscreen().unwrap_or(false) || window.is_minimized().unwrap_or(false) {
+        return false;
+    }
+    let (Ok(pos), Ok(size), Ok(Some(monitor))) = (window.outer_position(), window.outer_size(), window.current_monitor()) else { return false };
+    pos != *monitor.position() || size != *monitor.size()
+}
+
+#[cfg(windows)]
+fn window_rect(window: &WebviewWindow) -> Option<[i32; 4]> {
+    use windows_sys::Win32::Foundation::{HWND, RECT};
+    use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowRect;
+    let hwnd = window.hwnd().ok()?.0 as HWND;
+    let mut r = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+    (unsafe { GetWindowRect(hwnd, &mut r) } != 0).then_some([r.left, r.top, r.right, r.bottom])
+}
+
+#[cfg(windows)]
+fn set_window_rect(window: &WebviewWindow, [left, top, right, bottom]: [i32; 4]) {
+    use windows_sys::Win32::Foundation::HWND;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{SWP_NOACTIVATE, SWP_NOZORDER, SetWindowPos};
+    if let Ok(hwnd) = window.hwnd() {
+        unsafe { SetWindowPos(hwnd.0 as HWND, std::ptr::null_mut(), left, top, right - left, bottom - top, SWP_NOZORDER | SWP_NOACTIVATE) };
+    }
+}
+
+#[cfg(not(windows))]
+fn window_rect(_window: &WebviewWindow) -> Option<[i32; 4]> {
+    None
+}
+
+#[cfg(not(windows))]
+fn set_window_rect(_window: &WebviewWindow, _rect: [i32; 4]) {}
 
 #[tauri::command]
 fn is_fullscreen(window: WebviewWindow) -> bool {
@@ -281,7 +347,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(Updates::default())
-        .manage(WindowLook { opacity: Mutex::new(1.0) })
+        .manage(WindowLook { opacity: Mutex::new(1.0), before_fullscreen: Mutex::new(None) })
         .invoke_handler(tauri::generate_handler![
             desktop_info,
             update_check,
@@ -334,6 +400,16 @@ pub fn run() {
                         let _ = apply_opacity(&w, opacity);
                     }
                 }
+            }
+            if matches!(event, WindowEvent::Resized(_)) && fullscreen_disturbed(window) {
+                // after the current event, so the window library isn't re-entered
+                let app = window.app_handle().clone();
+                let label = window.label().to_string();
+                let _ = window.app_handle().run_on_main_thread(move || {
+                    if let Some(w) = app.get_webview_window(&label) {
+                        leave_fullscreen(&w, &w.state::<WindowLook>());
+                    }
+                });
             }
         })
         .run(tauri::generate_context!())

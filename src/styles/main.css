@@ -529,6 +529,42 @@ h1:focus { outline: none; }
   .play-top .topbar-sub { display: none; }
 }
 
+/* ------------------------------------------------------------------ full screen (Windows app, F11) */
+/* Only while the app is in full screen (data-fullscreen, set by window-ui.ts);
+   windowed and maximized layouts are untouched. */
+
+@media (min-width: 760px) and (min-aspect-ratio: 5/4) {
+  /* the board takes the centre of the screen, at least as big as in a window */
+  :root[data-fullscreen] .screen.play {
+    --controls: clamp(330px, 20vw, 390px);
+    --board: min(calc(100dvh - 120px), calc(100vw - var(--controls) - 80px), max(820px, calc(100dvh * 0.62)));
+  }
+  :root[data-fullscreen] .screen.play.learning {
+    --board: min(calc(100dvh - 170px), calc(100vw - var(--controls) - 80px), max(780px, calc(100dvh * 0.58)));
+  }
+  :root[data-fullscreen] .screen.play .play-body {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(max-content, 1fr); column-gap: 0;
+    align-items: center; align-content: center;
+    padding: 0 12px clamp(0px, calc(100dvh - var(--board) - 100px), 60px);
+  }
+  :root[data-fullscreen] .screen.play .board-col { grid-column: 2; }
+  :root[data-fullscreen] .screen.play .controls { grid-column: 3; justify-self: start; width: var(--controls); margin-left: clamp(24px, 2vw, 40px); padding-top: 0; gap: 12px; }
+  :root[data-fullscreen] .screen.play .numpad { gap: 10px; }
+  :root[data-fullscreen] .screen.play .pad-btn { min-height: clamp(64px, calc(var(--board) / 7.5), 104px); }
+  :root[data-fullscreen] .screen.play .pad-digit { font-size: 2.3rem; }
+  :root[data-fullscreen] .screen.play .numpad.notes-mode .pad-digit { font-size: 1.5rem; }
+}
+
+/* Choose a level, Sudoku AI, stages and stage puzzles: heading and content centred together */
+:root[data-fullscreen] .screen:is(:has(> .content .level-list), :has(.stage-grid), :has(.puzzle-grid)) {
+  justify-content: center; justify-content: safe center; padding-bottom: clamp(0px, calc(100dvh - 900px), 48px);
+}
+:root[data-fullscreen] .screen:has(.stage-grid) { max-width: 1120px; }
+:root[data-fullscreen] .stage-grid { gap: 16px; }
+:root[data-fullscreen] .stage-card { padding: 24px 10px; gap: 8px; }
+
+:root[data-fullscreen] .home { max-width: 560px; gap: 22px; }
+
 /* ------------------------------------------------------------------ overlays & dialogs */
 
 .overlay {

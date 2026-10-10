@@ -30,10 +30,16 @@ function showPill(ms = 2500): void {
   pillTimer = window.setTimeout(hidePill, ms);
 }
 
+/** Full-screen-only layout tweaks hang off this attribute (see main.css). */
+function setFullscreen(on: boolean): void {
+  fullscreen = on;
+  document.documentElement.toggleAttribute('data-fullscreen', on);
+}
+
 export async function toggleFullscreen(): Promise<void> {
   if (!desktop) return;
   try {
-    fullscreen = await desktop.toggleFullscreen();
+    setFullscreen(await desktop.toggleFullscreen());
   } catch {
     return;
   }
@@ -81,5 +87,13 @@ export function setupWindowControls(): void {
   window.addEventListener('pointermove', (e) => fullscreen && e.clientY < 40 && showPill(), { passive: true });
   // the app always starts as a normal, fully opaque window
   void desktop.setWindowOpacity(1).catch(() => undefined);
-  void desktop.isFullscreen().then((v) => (fullscreen = v), () => undefined);
+  // stay in step if Windows itself takes the window out of full screen
+  const bridge = desktop;
+  const sync = () => void bridge.isFullscreen().then(setFullscreen, () => undefined);
+  let resizeTimer = 0;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = window.setTimeout(sync, 150);
+  });
+  sync();
 }

@@ -78,7 +78,7 @@ export const aiScreen: ScreenFactory = (ctx) => {
     'button',
     { type: 'button', class: 'card-btn', onClick: () => void start('random') },
     h('span', { class: 'card-icon gold' }, icon('bolt')),
-    h('span', { class: 'card-text' }, h('strong', { text: 'Random challenge' }), h('small', { text: 'Any of the five difficulties, revealed when the puzzle starts' })),
+    h('span', { class: 'card-text' }, h('strong', { text: 'Randomizer' }), h('small', { text: 'Any of the five difficulties, revealed when the puzzle starts' })),
     icon('next', 'icon chevron'),
   );
   buttons.push(randomButton);

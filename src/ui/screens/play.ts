@@ -708,7 +708,7 @@ export const playScreen: ScreenFactory = (ctx, [id], query) => {
   render();
   if (game.status === 'lost') showLost();
   // a random Sudoku AI challenge reveals its difficulty as it begins
-  if (ref.kind === 'ai' && query.get('reveal') && !game.started) toast(`Random challenge: ${LEVEL_INFO[ref.level].name}`, { icon: 'bolt', ms: 4000 });
+  if (ref.kind === 'ai' && query.get('reveal') && !game.started) toast(`Randomizer: ${LEVEL_INFO[ref.level].name}`, { icon: 'bolt', ms: 4000 });
 
   return {
     el,

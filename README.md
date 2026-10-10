@@ -119,7 +119,7 @@ npm run release      # builds, signs, and creates the GitHub Release (installer,
 
 ### Full screen and transparency
 
-- **F11** switches full screen on and off; the previous window size, position and maximized state come back. In full screen, moving the pointer to the top edge shows an *Exit full screen* button.
+- **F11** switches full screen on and off; the previous window size, position and maximized state come back (a window snapped to half the screen returns there too). The title-bar maximize button stays separate: it toggles between maximized and the previous window size. In full screen, the game and menus are re-centred to use the extra space, and moving the pointer to the top edge shows an *Exit full screen* button.
 - **Settings → Window transparency** makes the whole native window see-through (opacity 40–100%, using the Windows layered-window API). It's always off when the app starts. *Restore full opacity* switches it back. It stays in effect through full screen, minimize and restore.
 
 ### Moving from 1.0.x (Electron)

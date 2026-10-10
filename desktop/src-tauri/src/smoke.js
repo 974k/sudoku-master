@@ -13,7 +13,10 @@
   const app = window.sudokuDesktop;
   const buttonByText = (root, text) => [...root.querySelectorAll('button')].find((b) => b.textContent.trim() === text);
   const key = (k) => (document.activeElement ?? document.body).dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
-  const size = () => ({ w: window.innerWidth, h: window.innerHeight, x: window.screenX, y: window.screenY });
+  const size = () => {
+    const b = document.querySelector('.board-wrap')?.getBoundingClientRect();
+    return { w: window.innerWidth, h: window.innerHeight, x: window.screenX, y: window.screenY, fullscreenLayout: document.documentElement.hasAttribute('data-fullscreen'), board: b ? `${Math.round(b.width)} at ${Math.round(b.left)},${Math.round(b.top)}` : null };
+  };
   try {
     await wait(1200);
     c.title = document.title;
@@ -115,6 +118,7 @@
       key('F11');
       await wait(1500);
       c.fullscreen = { state: await app.isFullscreen(), ...size() };
+      await wait(Number(__HOLD_MS__)); // the outside test script screenshots the full-screen game here
       const cell = [...document.querySelectorAll('[role=gridcell]')].find((el) => !el.textContent.trim());
       cell?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
       cell?.click();
