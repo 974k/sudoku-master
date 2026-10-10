@@ -1,7 +1,7 @@
 {
   "name": "sudoku-master-desktop",
   "productName": "Sudoku Master",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Sudoku Master for Windows: the same ad-free, offline game in a desktop window.",
   "author": "Sudoku Master",
