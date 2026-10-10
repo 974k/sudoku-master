@@ -1,0 +1,56 @@
+{
+  "name": "sudoku-master-desktop",
+  "productName": "Sudoku Master",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Sudoku Master for Windows: the same ad-free, offline game in a desktop window.",
+  "author": "Sudoku Master",
+  "main": "main.cjs",
+  "scripts": {
+    "prepare-app": "npm --prefix .. run build && node copy-app.mjs",
+    "start": "npm run prepare-app && electron .",
+    "smoke": "node smoke.mjs",
+    "dist": "npm run prepare-app && electron-builder --win"
+  },
+  "build": {
+    "appId": "app.sudokumaster.desktop",
+    "productName": "Sudoku Master",
+    "copyright": "Free and ad-free. No data collection.",
+    "files": [
+      "main.cjs",
+      "app/**/*"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "icon": "icon.png",
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "portable": {
+      "artifactName": "SudokuMaster-${version}-portable.exe"
+    },
+    "nsis": {
+      "artifactName": "SudokuMaster-${version}-setup.exe",
+      "shortcutName": "Sudoku Master",
+      "deleteAppDataOnUninstall": true
+    }
+  },
+  "devDependencies": {
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3"
+  }
+}

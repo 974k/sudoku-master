@@ -1,0 +1,23 @@
+{
+  "name": "sudoku-master",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A 100% ad-free, offline, private Sudoku game. No accounts, no tracking, no network.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build && node scripts/privacy-audit.mjs",
+    "preview": "vite preview --port 4173 --strictPort",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "generate:puzzles": "node scripts/generate-puzzles.ts",
+    "icons": "node scripts/make-icons.mjs",
+    "audit:privacy": "node scripts/privacy-audit.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.1",
+    "typescript": "~5.9.3",
+    "vite": "^7.3.0",
+    "vitest": "^5.0.3"
+  }
+}
